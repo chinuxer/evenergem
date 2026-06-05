@@ -1,0 +1,74 @@
+/*
+    PAU_CORE静态库
+    内存配置文件 (IAR)
+    - Flash: 1024KB (0x08000000 - 0x080FFFFF)
+    - RAM: 128KB 常规RAM (0x20000000 - 0x2001FFFF)
+    - CCM RAM: 64KB (0x10000000 - 0x1000FFFF) [独立于DMA的内核专用RAM]
+*/
+
+    define symbol __ICFEDIT_region_CUSTOM_RAM_start__ = 0x20000000;
+    define symbol __ICFEDIT_region_CUSTOM_RAM_length__ = 0x000000A00; // 128 B
+    define symbol __ICFEDIT_region_CUSTOM_HEAP_length__ = CUSTOM_HEAP_SIZE; // 6kB  CUSTOM_HEAP_SIZE=0x1800
+
+    define symbol __ICFEDIT_region_ROM_start__    = 0x08000000;  
+    define symbol __ICFEDIT_region_ROM_end__      = 0x080FFFFF;  
+    
+    define symbol __ICFEDIT_region_RAM_start__    = __ICFEDIT_region_CUSTOM_RAM_start__ + __ICFEDIT_region_CUSTOM_RAM_length__ + __ICFEDIT_region_CUSTOM_HEAP_length__;  
+    define symbol __ICFEDIT_region_RAM_end__      = 0x2001FFFF;  
+    
+    define symbol __ICFEDIT_region_CCM_start__    = 0x10000000;  
+    define symbol __ICFEDIT_region_CCM_end__      = 0x1000FFFF;  
+
+    
+    define symbol __ICFEDIT_size_cstack__         = 0x1000;  
+    define symbol __ICFEDIT_size_heap__           = 0x2000;  
+    define symbol __ICFEDIT_size_ccm_heap__       = 0x800;   
+
+
+    define symbol __PAU_CORE_RAM_start__ = __ICFEDIT_region_CUSTOM_RAM_start__;
+    define symbol __PAU_CORE_RAM_end__ = __ICFEDIT_region_CUSTOM_RAM_start__ + __ICFEDIT_region_CUSTOM_RAM_length__;
+    define symbol __PAU_CORE_RAM_size__ = __ICFEDIT_region_CUSTOM_RAM_length__;
+    define symbol __PAU_CORE_HEAP_start__ = __PAU_CORE_RAM_end__;
+    define symbol __PAU_CORE_HEAP_end__ = __PAU_CORE_HEAP_start__ + __ICFEDIT_region_CUSTOM_HEAP_length__;
+    define symbol __PAU_CORE_HEAP_size__ = __ICFEDIT_region_CUSTOM_HEAP_length__;
+
+    define memory mem with size = 4G;
+    define region ROM_region   = mem:[from __ICFEDIT_region_ROM_start__ to __ICFEDIT_region_ROM_end__];
+    define region RAM_region   = mem:[from __ICFEDIT_region_RAM_start__ to __ICFEDIT_region_RAM_end__];
+    define region CCM_region   = mem:[from __ICFEDIT_region_CCM_start__ to __ICFEDIT_region_CCM_end__];
+    define region PAU_CORE_RAM_region = mem:[from __PAU_CORE_RAM_start__ to __PAU_CORE_RAM_end__];
+    define region PAU_CORE_HEAP_region = mem:[from __PAU_CORE_HEAP_start__ to __PAU_CORE_HEAP_end__];
+   
+    define block CSTACK    with alignment = 8, size = __ICFEDIT_size_cstack__   { }; 
+    define block HEAP      with alignment = 8, size = __ICFEDIT_size_heap__     { }; 
+    define block CCM_HEAP  with alignment = 8, size = __ICFEDIT_size_ccm_heap__ { }; 
+    place in PAU_CORE_RAM_region { section .pau_ram_section  };
+    place in PAU_CORE_HEAP_region { section .pau_heap_section };
+    place at address mem:__ICFEDIT_region_ROM_start__ { readonly section .intvec };
+    
+    keep { section .pau_ram_section };
+    
+    place in ROM_region { readonly };
+    
+    
+    place in RAM_region { readwrite,
+                          section .data,
+                          section .bss,
+                          section .non_init };
+    
+    
+    place in RAM_region { block CSTACK, block HEAP };
+    
+    
+    place in CCM_region { block CCM_HEAP,
+                          section .ccm_data }; 
+
+    
+    define symbol __VECTOR_TABLE = __ICFEDIT_region_ROM_start__;
+
+    export symbol __PAU_CORE_RAM_start__;
+    export symbol __PAU_CORE_RAM_end__;
+    export symbol __PAU_CORE_RAM_size__;
+    export symbol __PAU_CORE_HEAP_start__;
+    export symbol __PAU_CORE_HEAP_end__;
+    export symbol __PAU_CORE_HEAP_size__;

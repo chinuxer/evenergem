@@ -1,0 +1,167 @@
+/**
+ ******************************************************************************
+ * Copyright(c) Infy Power 2025-2025
+ * @file    pau_fsm.c
+ * @author  YBA40320
+ * @version V1.0
+ * @date    2025-11-07
+ * @brief   1. 来车->分配一个模块（不管空闲还是抢来的）做绝缘 2. 预充->分配尽可能满足BCP电流的空闲节点,有空闲节点就分配空闲节点，没有就维持绝缘检测节点不变 3.充电->按照需求功率折算变化来实际分配节点，BCP电流不再作为参考
+ * @history 2025-11-07 YBA40320 对接PCU状态机接口
+ ******************************************************************************
+ */
+#include "pau_broker.h"
+#include "pau_tactic.h"
+St_PolicyTargetResult gtarget_result = {0};
+
+/**
+ * @brief Perform serviceable patrol on devices connected to a plug
+ * Checks for faulty nodes or contactors and handles them by deordering
+ * @param plug_id ID of the plug to patrol
+ * @param patrol_type Type of patrol to perform (NODE_PATROLLING or CONTACTOR_PATROLLING)
+ * @return void
+ * @sideeffect May deorder faulty nodes and update plug allocation
+ * @errorcond Returns early if plug has invalid priority or no chargers
+ */
+
+void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
+{
+    if (!ASSERT_PLUG_ID(chargeeID))
+    {
+        return;
+    }
+    print_outcomes(chargeeID);
+    memset(outcome->PolicyTargetdPowerNode, 0xff, MAXNODES_MEM_LMT);
+    memset(outcome->PolicyTarget_RelayNo, 0xff, MAXNODES_MEM_LMT * 2);
+    outcome->u8PolicyTargetPowerNodeNum = get_plug_allocated_cnt(chargeeID);
+    FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN}};
+    flowDirectioned(chargeeID, map);
+    outcome->PolicyTargetdPowerNode[0] = get_plug_connectednode(chargeeID, NODE_MAX, PLUG_MAX);
+    outcome->PolicyTarget_RelayNo[0][0] = 0xfe;
+    for (int n = 1; n < outcome->u8PolicyTargetPowerNodeNum; n++)
+    {
+        if (ID_VAIN == map[n - 1].direction || ID_VAIN == map[n - 1].contactorid)
+        {
+            break;
+        }
+        outcome->PolicyTargetdPowerNode[n] = map[n - 1].direction;
+        outcome->PolicyTarget_RelayNo[n][0] = map[n - 1].contactorid;
+    }
+    for (int n = 1; n < outcome->u8PolicyTargetPowerNodeNum; n++)
+    {
+        pau_printf("[%d] = %02x %02x\r\n", n, outcome->PolicyTargetdPowerNode[n - 1], outcome->PolicyTarget_RelayNo[n - 1][0]);
+    }
+}
+
+static void handle_init_cmd(void)
+{
+    bool database_building(void);
+    database_building();
+    return;
+}
+
+static void handle_plugin_cmd(va_list *args)
+{
+    va_list copy;
+    va_copy(copy, *args);
+    St_PolicyTargetResult *target_result = &gtarget_result;
+    ID_TYPE CCU_placed_id = (ID_TYPE)va_arg(copy, ID_TYPE);
+    PRIOR priority = (PRIOR)va_arg(copy, int);
+    va_end(copy);
+    if (CCU_placed_id > PLUG_MAX || 0 == CCU_placed_id)
+    {
+        return;
+    }
+    if (PRIOR_VAIN != get_plug_priority(CCU_placed_id) || 0 < get_plug_allocated_cnt(CCU_placed_id))
+    {
+        return;
+    }
+    pau_printf("[PAU] Plug %d is placed\r\n", CCU_placed_id);
+    bool requestPower(ID_TYPE, int);
+    set_plug_priority(CCU_placed_id, priority);
+    requestPower(CCU_placed_id, UNITPWR_MAX);
+    publish_Outcomes(CCU_placed_id, target_result);
+    return;
+}
+
+static void handle_charging_cmd(va_list *args)
+{
+    va_list copy;
+    va_copy(copy, *args);
+    St_PolicyTargetResult *target_result = &gtarget_result;
+    ID_TYPE CCU_ordering_id = (ID_TYPE)va_arg(copy, ID_TYPE);
+    float longfor_current = va_arg(copy, double);
+    float voltage = va_arg(copy, double);
+    va_end(copy);
+    if (CCU_ordering_id > PLUG_MAX)
+    {
+        return;
+    }
+
+    int requiredPower = (int)(longfor_current * voltage) / 100;
+    bool requestPower(ID_TYPE, int);
+    // void available_power_update(void);
+    // available_power_update();
+    requestPower(CCU_ordering_id, requiredPower);
+    pau_printf("[PAU] Charging %d is ordered %fA %fV %dkW\r\n", CCU_ordering_id, longfor_current, voltage, requiredPower);
+    publish_Outcomes(CCU_ordering_id, target_result);
+    return;
+}
+
+static void handle_plugout_cmd(va_list *args)
+{
+    va_list copy;
+    va_copy(copy, *args);
+    St_PolicyTargetResult *target_result = &gtarget_result;
+    ID_TYPE CCU_deorder_id = (ID_TYPE)va_arg(copy, ID_TYPE);
+    va_end(copy);
+    if (CCU_deorder_id > PLUG_MAX)
+    {
+        return;
+    }
+    if (PRIOR_VAIN == get_plug_priority(CCU_deorder_id) || 0 == get_plug_allocated_cnt(CCU_deorder_id))
+    {
+        return;
+    }
+    pau_printf("[PAU] Plug %d is deordered\r\n", CCU_deorder_id);
+    bool releasePower(ID_TYPE, int);
+    releasePower(CCU_deorder_id, 0);
+    publish_Outcomes(CCU_deorder_id, target_result);
+    return;
+}
+
+void handle_plugin_cmd_shell(St_PolicyTargetResult *target, ...)
+{
+
+    va_list args; // variable argument list,quel ennui..,despised by veterans
+    va_start(args, target);
+    handle_plugin_cmd(&args);
+    va_end(args);
+    return;
+}
+void handle_charging_cmd_shell(St_PolicyTargetResult *target, ...)
+{
+
+    va_list args; // variable argument list,quel ennui..,despised by veterans
+    va_start(args, target);
+    handle_charging_cmd(&args);
+    va_end(args);
+    return;
+}
+void handle_plugout_cmd_shell(St_PolicyTargetResult *target, ...)
+{
+
+    va_list args; // variable argument list,quel ennui..,despised by veterans
+    va_start(args, target);
+    handle_plugout_cmd(&args);
+    va_end(args);
+    return;
+}
+void test_sequence(void)
+{
+    handle_init_cmd();
+    handle_plugin_cmd_shell(&gtarget_result, 1, PRIOR_BASE);
+    handle_plugin_cmd_shell(&gtarget_result, 5, PRIOR_BASE);
+    handle_plugin_cmd_shell(&gtarget_result, 3, PRIOR_BASE);
+    handle_charging_cmd_shell(&gtarget_result, 3, 411.0f, 500.0f);
+    handle_plugout_cmd_shell(&gtarget_result, 1);
+}
