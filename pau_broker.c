@@ -84,6 +84,7 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
         p->obj_array[i].connectedNode = get_plug_connectednode(i, NODE_MAX, n);
         p->obj_array[i].requiredPower = 0;
         p->obj_array[i].hysteresisCnt = 0;
+        p->obj_array[i].refresh = false;
         p->obj_array[i].allocatedNodes = (PAU_Vector *)pau_calloc(sizeof(PAU_Vector) + (PAU_VECTOR_DEFAULT_CAPACITY + 1) * sizeof(size_t), __func__);
         p->obj_array[i].allocatedNodes->data[0] = PAU_VECTOR_DEFAULT_CAPACITY;
         pau_vector_clear(p->obj_array[i].allocatedNodes);
@@ -271,6 +272,15 @@ size_t get_plug_allocated_cnt(ID_TYPE plugid)
     }
     return refer_Plug_Extracted(plugid)->allocatedNodes->size;
 }
+void clr_plug_allocated_cnt(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return;
+    }
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    pau_vector_clear(pplug->allocatedNodes);
+}
 size_t get_plug_chargingmodules_cnt(ID_TYPE plugid)
 {
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
@@ -358,4 +368,20 @@ ID_TYPE get_node_chargingplugid(ID_TYPE node)
         return ID_VAIN;
     }
     return refer_Node_Extracted(node)->plug_id;
+}
+bool get_plug_refresh_flag(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return false;
+    }
+    return refer_Plug_Extracted(plugid)->refresh; 
+}
+void set_plug_refresh_flag(ID_TYPE plugid,bool val)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return;
+    }
+    refer_Plug_Extracted(plugid)->refresh=val; 
 }

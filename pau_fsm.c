@@ -12,7 +12,7 @@
 #include "pau_broker.h"
 #include "pau_tactic.h"
 St_PolicyTargetResult gtarget_result = {0};
-
+#define ASSERT_PARITY_MODE false
 /**
  * @brief Perform serviceable patrol on devices connected to a plug
  * Checks for faulty nodes or contactors and handles them by deordering
@@ -76,6 +76,7 @@ static void handle_plugin_cmd(va_list *args)
         return;
     }
     pau_printf("[PAU] Plug %d is placed\r\n", CCU_placed_id);
+    clr_plug_allocated_cnt(CCU_placed_id);
     bool requestPower(ID_TYPE, int);
     set_plug_priority(CCU_placed_id, priority);
     requestPower(CCU_placed_id, UNITPWR_MAX);
@@ -85,6 +86,10 @@ static void handle_plugin_cmd(va_list *args)
 
 static void handle_charging_cmd(va_list *args)
 {
+    if (ASSERT_PARITY_MODE)
+    {
+        return;
+    }
     va_list copy;
     va_copy(copy, *args);
     St_PolicyTargetResult *target_result = &gtarget_result;
@@ -131,6 +136,10 @@ static void handle_plugout_cmd(va_list *args)
 
 void handle_plugin_cmd_shell(St_PolicyTargetResult *target, ...)
 {
+    if (ASSERT_PARITY_MODE)
+    {
+        return;
+    }
 
     va_list args; // variable argument list,quel ennui..,despised by veterans
     va_start(args, target);

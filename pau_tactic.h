@@ -41,6 +41,7 @@ PRIOR get_node_priority(ID_TYPE nodeid);
 size_t get_node_module_cnt(ID_TYPE nodeid);
 void set_plug_priority(ID_TYPE plugid, PRIOR priority);
 size_t get_plug_allocated_cnt(ID_TYPE plugid);
+void clr_plug_allocated_cnt(ID_TYPE plugid);
 size_t get_plug_chargingmodules_cnt(ID_TYPE plugid);
 size_t *get_plug_hysteresisCnt(ID_TYPE plugid);
 ID_TYPE get_plug_connectednode(ID_TYPE plugid, ID_TYPE nodes_total, ID_TYPE plugs_total);
@@ -51,5 +52,7 @@ void print_outcomes(ID_TYPE plugid);
 void flowDirectioned(ID_TYPE, FlowMap *);
 int get_plug_charging_power(ID_TYPE plugid);
 ID_TYPE get_node_chargingplugid(ID_TYPE node);
+bool get_plug_refresh_flag(ID_TYPE plugid);
+void set_plug_refresh_flag(ID_TYPE plugid,bool val);
 bool hear_Canaries_Twittering(void);
 #endif

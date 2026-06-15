@@ -96,6 +96,7 @@ struct Alloc_plugObj
     ID_TYPE connectedNode;      // 直接的节点ID
     size_t requiredPower;       // 需求功率 (kW)
     int shortage;       // 需求欠额节点数
+    bool refresh;
     size_t hysteresisCnt;       // 功率回差迟滞计数器
     PAU_Vector *allocatedNodes; // 已分配的节点
     PAU_Vector *disabledNodes;  // 禁用的节点(在已分配列表中 但并不计入节点数)

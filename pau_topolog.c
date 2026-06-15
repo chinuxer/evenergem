@@ -300,7 +300,7 @@ void pullout_further_nodes(ID_TYPE nodeid)
     }
 
     pull_NodefromPlug(nodeid, pnode->plug_id);
-
+    pplug->refresh=true;
     if (1 > pau_vector_size(releasenode_list))
     {
         return;
