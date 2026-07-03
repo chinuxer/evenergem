@@ -1,4 +1,4 @@
-/**
+/**,
  ******************************************************************************
  * Copyright(c) Infy Power 2026-2026
  * @file     pau_topolog.c
@@ -203,7 +203,7 @@ void updateContactorStates(ID_TYPE plugid, ID_TYPE nodeid)
     //  为单个充电桩已占用的节点集合，自动闭合接触器，形成一棵无环、连通、优先走环形边、必要时走对角线边的生成树。
     acyclic_tree_building(pplug);
 }
-void pull_NodefromPlug(ID_TYPE nodeid, ID_TYPE plugid)
+static void pull_NodefromPlug(ID_TYPE nodeid, ID_TYPE plugid)
 {
     if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid))
     {
@@ -238,7 +238,7 @@ void pull_NodefromPlug(ID_TYPE nodeid, ID_TYPE plugid)
     }
     updateContactorStates(plugid, nodeid);
 }
-void push_NodetoPlug(ID_TYPE nodeid, ID_TYPE plugid)
+static void push_NodetoPlug(ID_TYPE nodeid, ID_TYPE plugid)
 {
     if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid))
     {
@@ -293,22 +293,23 @@ void pullout_further_nodes(ID_TYPE nodeid)
 
     PAU_VECTOR_FOREACH(allocated_nodeid, pplug->allocatedNodes) // 遍历节点所属桩已分配的节点
     {
-        if (hops_compared < get_hops_occupied(pplug->connectedNode, allocated_nodeid, pplug->id))
+
+        int hops_allocated_nodeid = get_hops_occupied(pplug->connectedNode, allocated_nodeid, pplug->id);
+        hops_refresh(nodeid, pnode->plug_id);
+        int distance_to_nodeid = get_hops_occupied(nodeid, allocated_nodeid, pnode->plug_id);
+        hops_refresh(pplug->connectedNode, pnode->plug_id);
+        if ((hops_allocated_nodeid - hops_compared) == distance_to_nodeid) // 如果节点所属桩已分配的节点到当前移除节点的跳数等于各自到基直连节点的差值
         {
             pau_vector_append(releasenode_list, allocated_nodeid); // 找到所有跳数大于hops_compared的节点
         }
     }
 
-    pull_NodefromPlug(nodeid, pnode->plug_id);
-    pplug->refresh=true;
-    if (1 > pau_vector_size(releasenode_list))
-    {
-        return;
-    }
     PAU_VECTOR_FOREACH(releasenodeid, releasenode_list)
     {
-        pull_NodefromPlug(releasenodeid, pnode->plug_id); // 释放plugid所连接的节点中所有大于hops_compared的节点
+        pull_NodefromPlug(releasenodeid, pplug->id); // 释放plugid所连接的节点中所有大于hops_compared的节点
     }
+
+    pplug->refresh = true;
     pau_vector_destroy(releasenode_list);
 }
 ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t quota)
@@ -324,9 +325,11 @@ ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t quota)
         return ID_VAIN;
     }
     dual_endings_bfs_shell(startid, plugid, NEARER);
+
     for (int nodeid = 1; nodeid <= NODE_MAX; nodeid++)
     {
         size_t score = makeScore(SENARIO_ACQUIRE, quota, plugid, 1, nodeid, 1);
+        pau_printf("[%02d]%d \n", nodeid, score);
         // 遍历节点的每个邻居节点
         pau_vector_set(scorelist, nodeid, score);
     }
@@ -435,18 +438,45 @@ static bool node_common_operate(ID_TYPE plugid, bool opType)
     }
     return 0 >= quota;
 }
+static bool isConnectedNode(ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid))
+    {
+        return false;
+    }
 
-void idlenodes_donatio(ID_TYPE plugid)
+    for (ID_TYPE plugid = 1; plugid <= PLUG_MAX; plugid++)
+    {
+        struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+        if (pplug->connectedNode == nodeid)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+bool idlenodes_donatio(ID_TYPE plugid)
 {
     PAU_Vector *idlenode_list = pau_vector_create(NODE_MAX);
+    //优先将非connectednnode的节点放到列表中
     for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
     {
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->state == NODE_IDLE)
+        if (pnode->plug_id == ID_VAIN && pnode->state == NODE_IDLE && !isConnectedNode(nodeid))
         {
             pau_vector_append(idlenode_list, nodeid);
         }
     }
+    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        if (pnode->plug_id == ID_VAIN && pnode->state == NODE_IDLE && isConnectedNode(nodeid))
+        {
+            pau_vector_append(idlenode_list, nodeid);
+        }
+    }
+
+    bool ret = false;
     PAU_VECTOR_FOREACH(idlenode, idlenode_list)
     {
         ID_TYPE neighbor[3] = {0};
@@ -481,9 +511,31 @@ void idlenodes_donatio(ID_TYPE plugid)
         {
             pau_printf("%s nodeid:%d plugid:%d\r\n", __FUNCTION__, idlenode, optimal.plugid);
             push_NodetoPlug(idlenode, optimal.plugid);
+            refer_Plug_Extracted(optimal.plugid)->refresh = true;
+            update_plug_shortage_power(optimal.plugid);
+            ret = true;
         }
     }
     pau_vector_destroy(idlenode_list);
+    return ret;
+}
+bool transferPower(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return false;
+    }
+    int loop_guard = 0;
+    while (loop_guard < NODE_MAX)
+    {
+        bool res = idlenodes_donatio(plugid);
+        if (!res)
+        {
+            break;
+        }
+        loop_guard++;
+    }
+    return (loop_guard > 0);
 }
 bool requestPower(ID_TYPE plugid, int requiredPower)
 {
@@ -491,13 +543,12 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
     {
         return false;
     }
-    if (requiredPower > UNITPWR_MAX * MODULE_MAX / 2) // 单充电桩不能占用系统资源一半以上
-    {
-        requiredPower = UNITPWR_MAX * MODULE_MAX / 2;
-    }
-
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    struct Alloc_nodeObj *pnode_pile_shorted = refer_Node_Extracted(pplug->connectedNode);
+    if (!ASSERT_NODE_ID(pplug->connectedNode))
+    {
+        return false;
+    }
+    struct Alloc_nodeObj *pnode_pile_cutoff = refer_Node_Extracted(pplug->connectedNode);
     pplug->requiredPower = requiredPower;
     update_plug_shortage_power(plugid);
 
@@ -506,12 +557,14 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
         return true;
     }
     pau_printf("[TACTIC] requestPower plugid:%d requiredpwr:%d shortage:%d\r\n", plugid, requiredPower, pplug->shortage);
-    if (pplug->state == PLUG_IDLE && pnode_pile_shorted->state == NODE_OCCUPIED && ASSERT_NODE_ID(pplug->connectedNode)) // 如果直连节点被占用
+    if (pplug->state == PLUG_IDLE && pnode_pile_cutoff->state == NODE_OCCUPIED && ID_VAIN < pnode_pile_cutoff->plug_id) // 如果直连节点被占用
     {
+        ID_TYPE plugid_cutoff = pnode_pile_cutoff->plug_id;
         pullout_further_nodes(pplug->connectedNode); // 断开直连根节点所有连接
         push_NodetoPlug(pplug->connectedNode, plugid);
-        idlenodes_donatio(plugid);
+        update_plug_shortage_power(plugid_cutoff);
         update_plug_shortage_power(plugid);
+        transferPower(plugid);
     }
     pplug->state = PLUG_CHARGING;
     bool res = true;
@@ -521,10 +574,7 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
         res = node_common_operate(plugid, NODE_OP_DISPENSE);
         if (!res)
         {
-            if (!occupiednodes_preempt(plugid)) // 如果无法继续抢占
-            {
-                return false;
-            }
+            return occupiednodes_preempt(plugid); // 如果无法继续抢占
         }
         update_plug_shortage_power(plugid);
         if (loop_guard++ > pplug->shortage)
@@ -549,11 +599,19 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
         pplug->requiredPower = 0;
         pplug->hysteresisCnt = 0;
         pplug->shortage = 0;
-        PAU_VECTOR_FOREACH(allocated_nodeid, pplug->allocatedNodes)
+        PAU_Vector *allocatedNodes_copy = pau_vector_copy(pplug->allocatedNodes);
+        if (NULL == allocatedNodes_copy)
+        {
+            return false;
+        }
+        PAU_VECTOR_FOREACH(allocated_nodeid, allocatedNodes_copy)
         {
             pull_NodefromPlug(allocated_nodeid, plugid);
         }
         pau_vector_clear(pplug->disabledNodes);
+        pau_vector_clear(pplug->allocatedNodes);
+        pau_vector_destroy(allocatedNodes_copy);
+        transferPower(plugid);
         return true;
     }
     pplug->requiredPower = requiredPower;
@@ -568,7 +626,7 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
     while (0 > pplug->shortage)
     {
         res = node_common_operate(plugid, NODE_OP_RELEASE);
-        idlenodes_donatio(plugid);
+
         if (!res)
         {
             return false;
@@ -579,8 +637,10 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
         }
         update_plug_shortage_power(plugid);
     }
+    transferPower(plugid);
     return res;
 }
+
 void flowDirectioned(ID_TYPE plugid, FlowMap *object)
 {
     if (!ASSERT_PLUG_ID(plugid) || NULL == object)

@@ -1,20 +1,20 @@
 /**
  ******************************************************************************
- * Copyright(c) Infy Power 2026-2026
- * @file    pau_broker.c
- * @author  YBA40320
- * @version V1.0
- * @date    2026-04-27
- * @brief   数据结构在内存中的代理,实现对节点,充电桩,接触器等数据的访问和修改
- * @history 2026-04-27 YBA40320 创建;2026-05-15 YBA40320 从模拟机移植到A2605线环1500kW工程
- * @details
- *
- *************************************************************************************************************************************************************************/
+ Copyright(c) Infy Power 2026-2026
+  @file    pau_broker.c
+  @author  YBA40320
+  @version V1.0
+  @date    2026-04-27
+  @brief   数据结构在内存中的代理,实现对节点,充电桩,接触器等数据的访问和修改
+  @history 2026-04-27 YBA40320 创建;2026-05-15 YBA40320 从模拟机移植到A2605线环1500kW工程
+  @details
+ 
+ ************************************************************************************************************************************************************************/
 
 #define __IMPORT_GLOBALVAR__
 #define __IMPORT_PAU_DBFUNC__
 #include "pau_broker.h"
-/**
+/*
  * @brief Create a common constructor method for flexible arrays.
  */
 #define CREATE_FLEXSTRUCT_ARRAY(type, count) \
@@ -27,21 +27,44 @@
 #define IS_REAR_CANARY_INTACT(ptr, type) \
     (NULL != (ptr) ? (*GET_REAR_CANARY_PTR(ptr, type) == (REAR_MAGICWORD)) : false)
 
+int oprt_ratedpwr_per_module(int rated_pwr)
+{
+    static int g_rated_pwr_per_module IN_PAU_RAM_SECTION = 0;
+    if (rated_pwr > 0)
+    {
+        g_rated_pwr_per_module = rated_pwr;
+    }
+
+    return g_rated_pwr_per_module;
+}
+static void availablePwr_Init(struct Alloc_nodeObj *pnode, int rated_pwr)
+{
+    pnode->power_available = rated_pwr * (pnode->moudle_box.size);
+}
 static void modulesPerNode_Init(struct Alloc_nodeObj *pnode)
 {
-    static const int module_nbr_map[] = {MAX_MODULES_PER_NODE,
-                                         MAX_MODULES_PER_NODE,
-                                         MAX_MODULES_PER_NODE - 1,
-                                         MAX_MODULES_PER_NODE - 1,
-                                         MAX_MODULES_PER_NODE,
-                                         MAX_MODULES_PER_NODE,
-                                         MAX_MODULES_PER_NODE - 1,
-                                         MAX_MODULES_PER_NODE - 1};
+#include "module_config.h"
+    if (pnode->id < 1 || pnode->id > (sizeof(module_nbr_map) / sizeof(module_nbr_map[0])))
+    {
+        pnode->moudle_box.size = 0;
+        return;
+    }
     pnode->moudle_box.size = module_nbr_map[pnode->id - 1];
 }
 ID_TYPE get_plug_connectednode(ID_TYPE plugid, ID_TYPE nodes_total, ID_TYPE plugs_total)
 {
-    return 1 + (plugid - 1) * (nodes_total / plugs_total);
+    ID_TYPE nodeid = 1 + (plugid - 1) * (nodes_total / plugs_total);
+    return nodeid > nodes_total ? nodes_total : nodeid;
+}
+static size_t factorial(ID_TYPE n)
+{
+    size_t res = 0;
+
+    for (int i = 1; i <= n; i++)
+    {
+        res += i;
+    }
+    return res;
 }
 static void Alloc_NodesArray_Init(void *const ptr, size_t n)
 {
@@ -52,8 +75,8 @@ static void Alloc_NodesArray_Init(void *const ptr, size_t n)
     // cstat #CERT-EXP36-C_a #CERT-EXP36-C_b #CERT-EXP39-C_d
     Alloc_NodesArray *p = (Alloc_NodesArray *)ptr;
     p->length = n;
-    p->modules_num = RATED_TOTAL_MODULES_PROJ;
-    p->unitpower = RATED_PWR_PER_MODULE;
+    p->unitpower = oprt_ratedpwr_per_module(0);
+    p->circulo = 0;
     p->front_canary = FRONT_MAGICWORD;
     for (ID_TYPE i = 1; i <= n; i++)
     {
@@ -62,7 +85,7 @@ static void Alloc_NodesArray_Init(void *const ptr, size_t n)
         p->obj_array[i].priority = PRIOR_VAIN;
         p->obj_array[i].plug_id = ID_VAIN;
         modulesPerNode_Init(&p->obj_array[i]);
-        p->obj_array[i].power_available = RATED_PWR_PER_MODULE * (p->obj_array[i].moudle_box.size);
+        availablePwr_Init(&p->obj_array[i], p->unitpower);
     }
     *GET_REAR_CANARY_PTR(p, Alloc_NodesArray) = REAR_MAGICWORD;
 }
@@ -81,16 +104,29 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
         p->obj_array[i].priority = PRIOR_VAIN;
         p->obj_array[i].state = PLUG_IDLE;
         p->obj_array[i].id = i;
-        p->obj_array[i].connectedNode = get_plug_connectednode(i, NODE_MAX, n);
+        if (NODES_ENCIRCLE > 0)
+        {
+            p->obj_array[i].connectedNode = get_plug_connectednode(i, NODES_ENCIRCLE, n);
+        }
+        else
+        {
+            p->obj_array[i].connectedNode = get_plug_connectednode(i, NODE_MAX, n);
+        }
         p->obj_array[i].requiredPower = 0;
         p->obj_array[i].hysteresisCnt = 0;
         p->obj_array[i].refresh = false;
         p->obj_array[i].allocatedNodes = (PAU_Vector *)pau_calloc(sizeof(PAU_Vector) + (PAU_VECTOR_DEFAULT_CAPACITY + 1) * sizeof(size_t), __func__);
-        p->obj_array[i].allocatedNodes->data[0] = PAU_VECTOR_DEFAULT_CAPACITY;
-        pau_vector_clear(p->obj_array[i].allocatedNodes);
+        if (NULL != p->obj_array[i].allocatedNodes)
+        {
+            p->obj_array[i].allocatedNodes->data[0] = PAU_VECTOR_DEFAULT_CAPACITY;
+            pau_vector_clear(p->obj_array[i].allocatedNodes);
+        }
         p->obj_array[i].disabledNodes = (PAU_Vector *)pau_calloc(sizeof(PAU_Vector) + (PAU_VECTOR_DEFAULT_CAPACITY + 1) * sizeof(size_t), __func__);
-        p->obj_array[i].disabledNodes->data[0] = PAU_VECTOR_DEFAULT_CAPACITY;
-        pau_vector_clear(p->obj_array[i].disabledNodes);
+        if (NULL != p->obj_array[i].disabledNodes)
+        {
+            p->obj_array[i].disabledNodes->data[0] = PAU_VECTOR_DEFAULT_CAPACITY;
+            pau_vector_clear(p->obj_array[i].disabledNodes);
+        }
     }
 
     *GET_REAR_CANARY_PTR(p, Alloc_PlugsArray) = REAR_MAGICWORD;
@@ -106,7 +142,12 @@ static void Alloc_ContactorsArray_Init(void *const ptr, size_t n)
     p->length = n;
     p->front_canary = FRONT_MAGICWORD;
     // 创建环形接触器链路
-    n /= 2;
+    size_t initcnt = n;
+    n = NODE_MAX;
+    if (initcnt != 2 * NODE_MAX || 0 != NODE_MAX % 2)
+    {
+        n = 2 * NODE_MAX / 3;
+    }
     for (ID_TYPE i = 1; i <= n; i++)
     {
         p->obj_array[i].id = i;
@@ -121,6 +162,24 @@ static void Alloc_ContactorsArray_Init(void *const ptr, size_t n)
         p->obj_array[n + i].isClosed = false;
         p->obj_array[n + i].node1 = i;
         p->obj_array[n + i].node2 = i + n / 2 > n ? i + n / 2 - n : i + n / 2;
+    }
+    //创建半矩阵节点的接触器链路
+    if (initcnt != 2 * NODE_MAX || 0 != NODE_MAX % 2) // nodes 12 + matrix 6 = 18  4*18/3 = 2*12
+    {
+        NODES_ENCIRCLE = n;
+        size_t contactorIdx = 2 * NODES_ENCIRCLE + 1; // 从25开始
+        n = NODES_ENCIRCLE / 2;
+        for (ID_TYPE node1 = 1; node1 <= n && contactorIdx <= initcnt; node1++)
+        {
+            for (ID_TYPE node2 = node1; node2 <= n && contactorIdx <= initcnt; node2++)
+            {
+                p->obj_array[contactorIdx].id = contactorIdx;
+                p->obj_array[contactorIdx].isClosed = false;
+                p->obj_array[contactorIdx].node1 = node1 + NODES_ENCIRCLE;
+                p->obj_array[contactorIdx].node2 = node2 + NODES_ENCIRCLE;
+                contactorIdx++;
+            }
+        }
     }
     *GET_REAR_CANARY_PTR(p, Alloc_ContactorsArray) = REAR_MAGICWORD;
 }
@@ -163,7 +222,7 @@ static void *create_FlexStruct_Array(size_t header_size, size_t element_size, si
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
 }
 
-bool database_building(void)
+bool database_building(TOPOTYPE topology, size_t nodes_num, size_t plugs_num)
 {
 #define CONTEXT_EXPANDER_PROJ_GLOBAL(x)                                                      \
     do                                                                                       \
@@ -176,14 +235,21 @@ bool database_building(void)
         }                                                                                    \
     } while (0);
 
-    size_t Nodes_varonstack = 8;
-    size_t Plugs_varonstack = 8;
-    size_t Contactors_varonstack = 2 * 8;
+    size_t Nodes_varonstack = nodes_num;
+    size_t Plugs_varonstack = plugs_num;
+    size_t Contactors_varonstack = 2 * nodes_num;
     size_t ReqSettler_varonstack = Plugs_varonstack;
-    directedConfig_Init(Nodes_varonstack, Plugs_varonstack);
     (void)pau_calloc(0, __func__);
+    directedConfig_Init(Nodes_varonstack, Plugs_varonstack);
+    if (SemiHybrid == topology)
+    {
+        Nodes_varonstack += nodes_num / 2;
+        Contactors_varonstack += factorial(nodes_num / 2);
+    }
+
     VARIABLE_LIST_PENDING_EXPANDED
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
+    TOPOLOGY_TYPE = topology;
     return true;
 }
 bool hear_Canaries_Twittering(void)
@@ -211,6 +277,22 @@ bool hear_Canaries_Twittering(void)
     return true;
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
 }
+NodeState get_node_state(ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid))
+    {
+        return NODE_DISABLED;
+    }
+    return refer_Node_Extracted(nodeid)->state;
+}
+PlugState get_plug_state(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return PLUG_IDLE;
+    }
+    return refer_Plug_Extracted(plugid)->state;
+}
 size_t get_plug_requiredPower(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
@@ -220,7 +302,16 @@ size_t get_plug_requiredPower(ID_TYPE plugid)
     return refer_Plug_Extracted(plugid)->requiredPower;
 }
 
-PRIOR get_node_priority(ID_TYPE nodeid)
+int get_node_available_power(ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid))
+    {
+        return 0;
+    }
+    return refer_Node_Extracted(nodeid)->power_available;
+}
+PRIOR
+get_node_priority(ID_TYPE nodeid)
 {
     if (!ASSERT_NODE_ID(nodeid))
     {
@@ -341,7 +432,7 @@ int get_plug_charging_power(ID_TYPE plugid)
     {
         return 0;
     }
-    int power_tocal = 0;
+    int power_total = 0;
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
     {
@@ -350,15 +441,15 @@ int get_plug_charging_power(ID_TYPE plugid)
         {
             continue;
         }
-        power_tocal += pnode->power_available;
+        power_total += pnode->power_available;
     }
-    return power_tocal;
+    return power_total;
 }
 void update_plug_shortage_power(ID_TYPE plugid)
 {
-    int power_tocal = get_plug_charging_power(plugid);
+    int power_total = get_plug_charging_power(plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    int shortage_power = (int)(pplug->requiredPower) - power_tocal;
+    int shortage_power = (int)(pplug->requiredPower) - power_total;
     pplug->shortage = (shortage_power >= 0) ? (int)(shortage_power + UNITPWR_MAX - SIZING_TOLERANCE) / UNITPWR_MAX : -1 * (-1 * shortage_power / UNITPWR_MAX);
 }
 ID_TYPE get_node_chargingplugid(ID_TYPE node)
@@ -375,13 +466,13 @@ bool get_plug_refresh_flag(ID_TYPE plugid)
     {
         return false;
     }
-    return refer_Plug_Extracted(plugid)->refresh; 
+    return refer_Plug_Extracted(plugid)->refresh;
 }
-void set_plug_refresh_flag(ID_TYPE plugid,bool val)
+void set_plug_refresh_flag(ID_TYPE plugid, bool val)
 {
     if (!ASSERT_PLUG_ID(plugid))
     {
         return;
     }
-    refer_Plug_Extracted(plugid)->refresh=val; 
+    refer_Plug_Extracted(plugid)->refresh = val;
 }

@@ -153,10 +153,10 @@ int pau_vector_append_deep(PAU_Vector *vec, const void *elem)
         return -1;
     }
     // 如果已经包含该元素
-   // if (1 == pau_vector_contains_deep(vec, *elem))
-   // {
+    // if (1 == pau_vector_contains_deep(vec, *elem))
+    // {
     //    return -1;
-   // }
+    // }
     // 计算元素存储位置，拷贝数据（泛型拷贝）
     size_t *target = (size_t *)vec->data + 1 + vec->size;
     memcpy(target, elem, sizeof(size_t));
@@ -220,7 +220,7 @@ void pau_vector_fill(PAU_Vector *vec, size_t value)
 // 销毁PAU_Vector（释放内存，对应QVector::~QVector()）
 void pau_vector_destroy(PAU_Vector *vec)
 {
-    if (vec)
+    if (NULL != vec)
     {
         vec->data[0] = 0; // 销毁前修改容量为0 pau_alloc视为未使用
     }

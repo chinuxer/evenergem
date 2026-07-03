@@ -1,0 +1,10 @@
+*
+!*.h
+!*.c
+!*.cpp
+!*.sh
+!*.txt
+!*.ui
+!*.pro
+!*.bat
+!.gitignore

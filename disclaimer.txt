@@ -1,0 +1,47 @@
+本软件 allocyclus（以下简称“本软件”）由开发者袁博（以下简称“开发者”）出于培训、教学及功能验证之目而开发，仅供学习、研究、测试及非商业性使用。
+用途限制
+本软件仅用于教育、培训、技术验证及内部测试等非商业用途。任何个人或组织不得将本软件用于商业盈利、生产环境、关键业务系统或任何可能带来经济收益的活动。
+非商业用途声明
+开发者明确声明，本软件不用于任何形式的商业牟利。使用者不得将本软件用于销售、出租、许可、再分发或作为商业产品的一部分，除非获得开发者明确的书面授权。
+无担保声明
+本软件按“现状”提供，开发者不提供任何明示或暗示的担保，包括但不限于对适销性、特定用途适用性、准确性、完整性或无侵权的担保。使用本软件的风险由使用者自行承担。
+责任限制
+在任何情况下，开发者均不对因使用或无法使用本软件所引起的任何直接、间接、偶然、特殊、典型或后果性损害（包括但不限于数据丢失、业务中断、利润损失等）承担责任，即使开发者已被告知可能发生此类损害。
+知识产权
+本软件的著作权及相关知识产权归开发者袁博所有。使用者可在非商业前提下自由使用、修改和分发本软件，但必须保留本免责声明及原始版权声明。任何修改后的版本也应明确标注“仅用于教学与验证用途”。
+第三方组件
+本软件可能包含第三方开源组件或库，其使用受各自许可协议约束。使用者应遵守相关第三方许可条款。
+法律适用与争议解决
+本声明受中华人民共和国法律管辖。因本软件使用产生的任何争议，应通过友好协商解决；协商不成的，提交开发者所在地有管辖权的人民法院诉讼解决。
+更新与修改
+开发者保留随时修改本软件及本免责声明的权利，修改后的内容将在软件发布时一并更新，恕不另行通知。
+使用本软件即表示您已阅读、理解并同意遵守本免责声明的全部条款。如您不同意，请立即停止使用并删除本软件。
+开发者联系方式：
+姓名：袁博
+电话：+86 13327804666
+邮箱: 307163251@qq.com
+
+
+
+This software 'allocyclus' (hereinafter referred to as the "Software") is developed by the developer Yuan Bo (hereinafter referred to as the "Developer") solely for the purposes of training, education, and functional verification, and is intended exclusively for learning, research, testing, and non-commercial experimental use.
+Usage Restrictions
+The Software is strictly for non-commercial purposes such as education, training, technical validation, and internal testing. No individual or organization may use the Software for commercial profit, production environments, mission-critical systems, or any activities that may generate economic benefit.
+Non-Commercial Use Statement
+The Developer expressly declares that the Software is not intended for any form of commercial exploitation. Users shall not sell, rent, license, redistribute, or incorporate the Software into commercial products without the Developer’s prior written authorization.
+No Warranty
+The Software is provided "as is", without any express or implied warranties, including but not limited to warranties of merchantability, fitness for a particular purpose, accuracy, completeness, or non-infringement. The entire risk as to the use and performance of the Software lies with the user.
+Limitation of Liability
+Under no circumstances shall the Developer be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including but not limited to loss of data, business interruption, or loss of profits) arising from the use or inability to use the Software, even if the Developer has been advised of the possibility of such damages.
+Intellectual Property
+Copyright and related intellectual property rights in the Software are owned by the Developer, Yuan Bo. Users may use, modify, and distribute the Software for non-commercial purposes, provided that this disclaimer and the original copyright notice are retained. Any modified versions must clearly indicate that they are "for educational and verification purposes only."
+Third-Party Components
+The Software may include third-party open-source components or libraries, which are subject to their respective license agreements. Users must comply with the applicable third-party licensing terms.
+Governing Law and Dispute Resolution
+This disclaimer shall be governed by the laws of the People's Republic of China. Any disputes arising from the use of the Software shall be resolved through friendly negotiation; if negotiation fails, the dispute shall be submitted to the competent people's court in the Developer’s location.
+Updates and Modifications
+The Developer reserves the right to modify the Software and this disclaimer at any time. Updated versions will be published with the Software without prior notice.
+By using the Software, you acknowledge that you have read, understood, and agreed to be bound by all terms of this disclaimer. If you do not agree, please discontinue use and delete the Software immediately.
+Developer Contact Information:
+Name: Yuan Bo
+Phone: +86 13327804666
+Email: 307163251@qq.com

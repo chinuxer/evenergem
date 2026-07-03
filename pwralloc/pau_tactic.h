@@ -37,8 +37,6 @@ size_t get_plug_chargingnodes_cnt(ID_TYPE plugid);
 size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighbor_plugid, ID_TYPE nodeid, ID_TYPE neighbor_nodeid);
 size_t get_plug_requiredPower(ID_TYPE plugid);
 PRIOR get_plug_priority(ID_TYPE plugid);
-PRIOR get_node_priority(ID_TYPE nodeid);
-size_t get_node_module_cnt(ID_TYPE nodeid);
 void set_plug_priority(ID_TYPE plugid, PRIOR priority);
 size_t get_plug_allocated_cnt(ID_TYPE plugid);
 void clr_plug_allocated_cnt(ID_TYPE plugid);
@@ -51,8 +49,15 @@ int get_plug_shortage(ID_TYPE plugid);
 void print_outcomes(ID_TYPE plugid);
 void flowDirectioned(ID_TYPE, FlowMap *);
 int get_plug_charging_power(ID_TYPE plugid);
-ID_TYPE get_node_chargingplugid(ID_TYPE node);
+
 bool get_plug_refresh_flag(ID_TYPE plugid);
-void set_plug_refresh_flag(ID_TYPE plugid,bool val);
+void set_plug_refresh_flag(ID_TYPE plugid, bool val);
 bool hear_Canaries_Twittering(void);
+
+PRIOR get_node_priority(ID_TYPE nodeid);
+size_t get_node_module_cnt(ID_TYPE nodeid);
+ID_TYPE get_node_chargingplugid(ID_TYPE node);
+int get_node_available_power(ID_TYPE nodeid);
+NodeState get_node_state(ID_TYPE nodeid);
+PlugState get_plug_state(ID_TYPE plugid);
 #endif

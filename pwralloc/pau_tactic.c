@@ -51,6 +51,9 @@ static void bin2hex_left_pad(const char *bin_str, char *hex_str)
 }
 void print_outcomes(ID_TYPE plugid)
 {
+#if !defined(__IAR_SYSTEMS_ICC__)
+    return;
+#endif
     // The argument plugid is unused for the global status dump, but kept for signature compatibility
     (void)plugid;
 
@@ -189,6 +192,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         ID_TYPE neighbors[3];
         void get_neighbors(ID_TYPE nodeid, ID_TYPE * neighbors);
         get_neighbors(nodeid, neighbors);
+
         int occupied_count_neighbors = 0;
         int hops = -1;
         int module_adaptive = get_node_module_cnt(nodeid);

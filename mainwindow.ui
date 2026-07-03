@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1400</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>allocyclus</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <item>
+     <widget class="QGraphicsView" name="graphicsView">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>800</width>
+        <height>600</height>
+       </size>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <layout class="QVBoxLayout" name="verticalLayout">
+      <item>
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>系统配置</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_nodePile">
+        <item>
+         <widget class="QLabel" name="label_2">
+          <property name="text">
+           <string>节点数量:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="nodeCountSpinBox">
+          <property name="minimum">
+           <number>6</number>
+          </property>
+          <property name="maximum">
+           <number>36</number>
+          </property>
+          <property name="value">
+           <number>18</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_3">
+          <property name="text">
+           <string>充电桩数量:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="pileCountSpinBox">
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>18</number>
+          </property>
+          <property name="value">
+           <number>8</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_unitPower">
+          <property name="text">
+           <string>单机功率:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+        
+         <widget class="QDoubleSpinBox" name="unitPowerSpinBox">
+          <property name="suffix">
+           <string> kW</string>
+          </property>
+          <property name="decimals">
+           <number>1</number>  <!-- 保留1位小数 -->
+          </property>
+          <property name="minimum">
+           <double>10.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>200.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.500000000000000</double> <!-- 步长设为 0.5 -->
+          </property>
+          <property name="value">
+           <double>40.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QPushButton" name="applyConfigButton">
+        <property name="text">
+         <string>应用配置</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_4">
+        <property name="text">
+         <string>功率控制</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="pileComboBox"/>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="powerSpinBox">
+        <property name="suffix">
+         <string> kW</string>
+        </property>
+        <property name="maximum">
+         <number>2000</number>
+        </property>
+        <property name="value">
+         <number>40</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_9">
+        <property name="text">
+         <string>充电桩优先级:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="prioritySpinBox">
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>4</number>
+        </property>
+        <property name="value">
+         <number>1</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <item>
+         <widget class="QPushButton" name="requestButton">
+          <property name="text">
+           <string>请求功率</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="releaseButton">
+          <property name="text">
+           <string>释放功率</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+        <widget class="QPushButton" name="stopChargeButton">
+        <property name="text">
+         <string>结束充电</string>
+        </property>
+        </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_5">
+        <property name="text">
+         <string>手动操作（测试）</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QListWidget" name="nodeListWidget"/>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_5">
+        <item>
+         <widget class="QPushButton" name="allocateNodeButton">
+          <property name="text">
+           <string>分配节点</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="releaseNodeButton">
+          <property name="text">
+           <string>释放节点</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="toggleNodeEnableButton">
+         <property name="text">
+         <string>可用启停</string>
+        </property>
+        </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_6">
+        <property name="text">
+         <string>充电桩信息</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="pileInfoTextEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_7">
+        <property name="text">
+         <string>系统状态</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="statusTextEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_8">
+        <property name="text">
+         <string>操作日志</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="logTextEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_10">
+        <property name="text">
+         <string>工况保存/加载</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_6">
+        <item>
+         <widget class="QPushButton" name="saveStateButton">
+          <property name="text">
+           <string>保存工况</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="loadStateButton">
+          <property name="text">
+           <string>加载工况</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

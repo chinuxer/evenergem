@@ -158,6 +158,12 @@
         </file>
         <file>
             <name>$PROJ_DIR$\pau_fsm.c</name>
+            <outputs>
+                <tool>
+                    <name>ICCARM</name>
+                    <file> 36</file>
+                </tool>
+            </outputs>
             <inputs>
                 <tool>
                     <name>ICCARM</name>

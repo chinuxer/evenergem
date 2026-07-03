@@ -11,8 +11,7 @@
  */
 #include "pau_broker.h"
 #include "pau_tactic.h"
-St_PolicyTargetResult gtarget_result = {0};
-#define ASSERT_PARITY_MODE false
+
 /**
  * @brief Perform serviceable patrol on devices connected to a plug
  * Checks for faulty nodes or contactors and handles them by deordering
@@ -46,16 +45,19 @@ void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
         outcome->PolicyTargetdPowerNode[n] = map[n - 1].direction;
         outcome->PolicyTarget_RelayNo[n][0] = map[n - 1].contactorid;
     }
-    for (int n = 1; n < outcome->u8PolicyTargetPowerNodeNum; n++)
+    pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
+    for (int n = 1; n <= outcome->u8PolicyTargetPowerNodeNum; n++)
     {
-        pau_printf("[%d] = %02x %02x\r\n", n, outcome->PolicyTargetdPowerNode[n - 1], outcome->PolicyTarget_RelayNo[n - 1][0]);
+        pau_printf("[%d] = %02d %02d\r\n", n, outcome->PolicyTargetdPowerNode[n - 1], outcome->PolicyTarget_RelayNo[n - 1][0]);
     }
 }
 
 static void handle_init_cmd(void)
 {
-    bool database_building(void);
-    database_building();
+    bool database_building(TOPOTYPE, size_t, size_t);
+    int oprt_ratedpwr_per_module(int);
+    (void)oprt_ratedpwr_per_module(625);
+    database_building(CakraWheel, 8, 8);
     return;
 }
 
@@ -63,7 +65,7 @@ static void handle_plugin_cmd(va_list *args)
 {
     va_list copy;
     va_copy(copy, *args);
-    St_PolicyTargetResult *target_result = &gtarget_result;
+    St_PolicyTargetResult *target_result = va_arg(copy, St_PolicyTargetResult *);
     ID_TYPE CCU_placed_id = (ID_TYPE)va_arg(copy, ID_TYPE);
     PRIOR priority = (PRIOR)va_arg(copy, int);
     va_end(copy);
@@ -86,13 +88,10 @@ static void handle_plugin_cmd(va_list *args)
 
 static void handle_charging_cmd(va_list *args)
 {
-    if (ASSERT_PARITY_MODE)
-    {
-        return;
-    }
+
     va_list copy;
     va_copy(copy, *args);
-    St_PolicyTargetResult *target_result = &gtarget_result;
+    St_PolicyTargetResult *target_result = va_arg(copy, St_PolicyTargetResult *);
     ID_TYPE CCU_ordering_id = (ID_TYPE)va_arg(copy, ID_TYPE);
     float longfor_current = va_arg(copy, double);
     float voltage = va_arg(copy, double);
@@ -116,7 +115,7 @@ static void handle_plugout_cmd(va_list *args)
 {
     va_list copy;
     va_copy(copy, *args);
-    St_PolicyTargetResult *target_result = &gtarget_result;
+    St_PolicyTargetResult *target_result = va_arg(copy, St_PolicyTargetResult *);
     ID_TYPE CCU_deorder_id = (ID_TYPE)va_arg(copy, ID_TYPE);
     va_end(copy);
     if (CCU_deorder_id > PLUG_MAX)
@@ -132,45 +131,4 @@ static void handle_plugout_cmd(va_list *args)
     releasePower(CCU_deorder_id, 0);
     publish_Outcomes(CCU_deorder_id, target_result);
     return;
-}
-
-void handle_plugin_cmd_shell(St_PolicyTargetResult *target, ...)
-{
-    if (ASSERT_PARITY_MODE)
-    {
-        return;
-    }
-
-    va_list args; // variable argument list,quel ennui..,despised by veterans
-    va_start(args, target);
-    handle_plugin_cmd(&args);
-    va_end(args);
-    return;
-}
-void handle_charging_cmd_shell(St_PolicyTargetResult *target, ...)
-{
-
-    va_list args; // variable argument list,quel ennui..,despised by veterans
-    va_start(args, target);
-    handle_charging_cmd(&args);
-    va_end(args);
-    return;
-}
-void handle_plugout_cmd_shell(St_PolicyTargetResult *target, ...)
-{
-
-    va_list args; // variable argument list,quel ennui..,despised by veterans
-    va_start(args, target);
-    handle_plugout_cmd(&args);
-    va_end(args);
-    return;
-}
-void test_sequence(void)
-{
-    handle_init_cmd();
-    handle_plugin_cmd_shell(&gtarget_result, 1, PRIOR_BASE);
-    handle_plugin_cmd_shell(&gtarget_result, 5, PRIOR_BASE);
-    handle_plugin_cmd_shell(&gtarget_result, 3, PRIOR_BASE);
-    handle_charging_cmd_shell(&gtarget_result, 3, 411.0f, 500.0f);
-    handle_plugout_cmd_shell(&gtarget_result, 1);
 }
