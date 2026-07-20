@@ -67,19 +67,19 @@ size_t pau_vector_size(PAU_Vector *vec)
 }
 
 // 基础版：判断是否包含元素（字节对比）
-int pau_vector_contains(PAU_Vector *vec, size_t target)
+bool pau_vector_contains(PAU_Vector *vec, size_t target)
 {
     if (!vec || !target || vec->size == 0)
-        return -1;
+        return false;
 
     for (size_t i = 1; i <= vec->size; i++)
     {
         if (vec->data[i] == target)
         {
-            return 1; // 找到目标元素
+            return true; // 找到目标元素
         }
     }
-    return 0;
+    return false;
 }
 int pau_vector_contains_deep(PAU_Vector *vec, const size_t *target)
 {
@@ -229,19 +229,14 @@ void pau_vector_destroy(PAU_Vector *vec)
 void pau_vector_set(PAU_Vector *vec, size_t index, size_t value)
 {
     if (!vec || index > vec->data[0])
+    {
         return;
-    if (vec->data[index] != 0)
+    }
+    if (vec->data[index] == -1)
     {
         vec->size++;
     }
     vec->data[index] = value;
-}
-
-size_t pau_vector_get(PAU_Vector *vec, size_t index)
-{
-    if (!vec || index > vec->size)
-        return -1;
-    return vec->data[index];
 }
 
 // ============= 新增：迭代器核心函数 =============

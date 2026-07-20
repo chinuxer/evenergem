@@ -34,10 +34,10 @@ extern "C" void pau_log_printf(const char *fmt, ...)
     if (g_telnetConsole)
     {
         QString msg = QString::fromLocal8Bit(buffer);
-        //if (!msg.endsWith("\n"))
+        // if (!msg.endsWith("\n"))
         //{
-        //    msg.append("\r\n");
-        //}
+        //     msg.append("\r\n");
+        // }
         QMetaObject::invokeMethod(g_telnetConsole, "doSendToAll",
                                   Qt::QueuedConnection,
                                   Q_ARG(QString, msg));
@@ -177,7 +177,7 @@ int main(int argc, char *argv[])
         "    border: 1px solid #2c3e50;"
         "}");
     // 显示免责声明，用户拒绝则直接退出
-    //if (!showDisclaimer())
+    // if (!showDisclaimer())
     //{
     //    return 0;
     //}
@@ -204,7 +204,7 @@ int main(int argc, char *argv[])
     printf("Running on Windows platform\r\n");
 #endif
 
-    a.setApplicationName("RingTopologyPower");
+    a.setApplicationName("evenergem");
     a.setApplicationVersion("1.0");
     a.setOrganizationName("chinuxer");
 

@@ -20,6 +20,7 @@ void SimpleTopology::initialize(const TopologyConfig &config)
     m_nodes.clear();
     m_contactors.clear();
     m_piles.clear();
+    m_matrixnodes.clear();
 
     // 创建节点
     for (int i = 1; i <= config.nodeCount; i++)
@@ -29,14 +30,31 @@ void SimpleTopology::initialize(const TopologyConfig &config)
         node.pau_data = refer_Node_Extracted(i); // 关联到底层数据
         m_nodes.append(node);
     }
-
+    for (int i = 1; i <= config.nodeCount / 2; i++)
+    {
+        PowerNode node;
+        node.id = i + config.nodeCount;
+        node.pau_data = refer_Node_Extracted(node.id); // 关联到底层数据
+        m_matrixnodes.append(node);
+    }
     // 创建接触器
+
     for (int i = 1; i <= (2 * config.nodeCount); i++)
     {
         Contactor contactor;
         contactor.id = i;
         contactor.pau_data = refer_Contactor_Extracted(i); // 关联到底层数据
         m_contactors.append(contactor);
+    }
+    if (SemiHybrid == config.topotype)
+    {
+        for (int i = 1 + (2 * config.nodeCount); i <= CONTACTOR_MAX; i++)
+        {
+            Contactor contactor;
+            contactor.id = i;
+            contactor.pau_data = refer_Contactor_Extracted(i); // 关联到底层数据
+            m_contactors.append(contactor);
+        }
     }
 
     // 创建充电桩
@@ -65,15 +83,15 @@ QVector<QColor> SimpleTopology::generateColors(int count)
         QColor(220, 0, 0),    // 1 正红
         QColor(0, 70, 0),     // 2 深草绿
         QColor(255, 210, 0),  // 3 金黄
-        QColor(0, 100, 220),  // 4 深蓝
+        QColor(00, 140, 220),  // 4 深蓝
         QColor(255, 100, 0),  // 5 橙
-        QColor(130, 0, 180),  // 6 深紫
+        QColor(150, 0, 160),  // 6 深紫
         QColor(0, 180, 180),  // 7 青蓝
-        QColor(200, 80, 180), // 8 洋红
+        QColor(200, 100, 180), // 8 洋红
         QColor(160, 200, 0),  // 9 黄绿（和2号深绿明显区分）
-        QColor(80, 80, 180),  //10 靛蓝
-        QColor(200, 120, 60), //11 棕橙
-        QColor(60, 200, 140)  //12 薄荷绿（和2、9绿色完全不相似）
+        QColor(80, 40, 180),  // 10 靛蓝
+        QColor(200, 120, 60), // 11 棕橙
+        QColor(60, 200, 140)  // 12 薄荷绿（和2、9绿色完全不相似）
     };
     const int fixedCount = sizeof(distinct12) / sizeof(distinct12[0]);
 
@@ -254,7 +272,7 @@ void SimpleTopology::linkage_publisher(int plugid)
         return;
     }
 
-    //遍历每个充电桩refresh是否为真
+    // 遍历每个充电桩refresh是否为真
     for (int i = 0; i < m_piles.size(); i++)
     {
         if (m_piles[i].pau_data->refresh == true)

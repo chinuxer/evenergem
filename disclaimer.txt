@@ -1,4 +1,4 @@
-本软件 allocyclus（以下简称“本软件”）由开发者袁博（以下简称“开发者”）出于培训、教学及功能验证之目而开发，仅供学习、研究、测试及非商业性使用。
+本软件 evenergem（以下简称“本软件”）由开发者袁博（以下简称“开发者”）出于培训、教学及功能验证之目而开发，仅供学习、研究、测试及非商业性使用。
 用途限制
 本软件仅用于教育、培训、技术验证及内部测试等非商业用途。任何个人或组织不得将本软件用于商业盈利、生产环境、关键业务系统或任何可能带来经济收益的活动。
 非商业用途声明
@@ -23,7 +23,7 @@
 
 
 
-This software 'allocyclus' (hereinafter referred to as the "Software") is developed by the developer Yuan Bo (hereinafter referred to as the "Developer") solely for the purposes of training, education, and functional verification, and is intended exclusively for learning, research, testing, and non-commercial experimental use.
+This software 'evenergem' (hereinafter referred to as the "Software") is developed by the developer Yuan Bo (hereinafter referred to as the "Developer") solely for the purposes of training, education, and functional verification, and is intended exclusively for learning, research, testing, and non-commercial experimental use.
 Usage Restrictions
 The Software is strictly for non-commercial purposes such as education, training, technical validation, and internal testing. No individual or organization may use the Software for commercial profit, production environments, mission-critical systems, or any activities that may generate economic benefit.
 Non-Commercial Use Statement

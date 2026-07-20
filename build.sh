@@ -22,10 +22,11 @@ print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # 变量配置
-PROJECT_NAME="RingTopologyPower"
-BUILD_DIR="build"
+PROJECT_NAME="evenergem"
+BUILD_DIR="linux_buildout"
 QMAKE_PATH="/usr/bin/qmake"
 MAKE_JOBS=$(nproc)  # 使用所有可用的CPU核心进行并行编译
+BUILD_OUTPUT=""
 
 # =============================================
 # 函数定义
@@ -108,9 +109,35 @@ compile_project() {
     cd ..
 }
 
+# 确定输出目录
+determine_output_dir() {
+    if [ -d "$BUILD_DIR/release" ] && [ -x "$BUILD_DIR/release/$PROJECT_NAME" ]; then
+        BUILD_OUTPUT="$BUILD_DIR/release"
+    elif [ -d "$BUILD_DIR/debug" ] && [ -x "$BUILD_DIR/debug/$PROJECT_NAME" ]; then
+        BUILD_OUTPUT="$BUILD_DIR/debug"
+    else
+        BUILD_OUTPUT="$BUILD_DIR"
+    fi
+}
+
+# 生成Makefile
+generate_makefile() {
+    print_info "生成Makefile..."
+    
+    cd "$BUILD_DIR"
+    
+    # 使用qmake生成Makefile
+    if ! $QMAKE_PATH ../*.pro; then
+        print_error "qmake执行失败"
+        exit 1
+    fi
+    
+    cd ..
+}
+
 # 检查可执行文件
 check_executable() {
-    local executable="$BUILD_DIR/$PROJECT_NAME"
+    local executable="$BUILD_OUTPUT/$PROJECT_NAME"
     
     if [ -f "$executable" ] && [ -x "$executable" ]; then
         print_success "可执行文件已生成: $executable"
@@ -130,9 +157,9 @@ show_summary() {
     print_info "构建目录: $BUILD_DIR"
     print_info "qmake路径: $QMAKE_PATH"
     print_info "并行任务数: $MAKE_JOBS"
-    print_info "可执行文件: ./$BUILD_DIR/$PROJECT_NAME"
+    print_info "可执行文件: ./$BUILD_OUTPUT/$PROJECT_NAME"
     echo "================================"    
-    print_info "运行程序: ./$BUILD_DIR/$PROJECT_NAME"
+    print_info "运行程序: ./$BUILD_OUTPUT/$PROJECT_NAME"
 }
 
 # =============================================
@@ -155,8 +182,9 @@ main() {
     
     # 编译项目
     compile_project
-    
-    # 验证结果
+
+    # 确定输出目录并验证结果
+    determine_output_dir
     if check_executable; then       
         show_summary
     else

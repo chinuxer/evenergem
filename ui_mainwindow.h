@@ -269,10 +269,10 @@ public:
 
     void retranslateUi(QMainWindow *MainWindow)
     {
-        MainWindow->setWindowTitle(QApplication::translate("MainWindow", "allocyclus", nullptr));
+        MainWindow->setWindowTitle(QApplication::translate("MainWindow", "evenergem", nullptr));
         label->setText(QApplication::translate("MainWindow", "\347\263\273\347\273\237\351\205\215\347\275\256", nullptr));
-        label_2->setText(QApplication::translate("MainWindow", "\350\212\202\347\202\271\346\225\260\351\207\217:", nullptr));
-        label_3->setText(QApplication::translate("MainWindow", "\345\205\205\347\224\265\346\241\251\346\225\260\351\207\217:", nullptr));
+        label_2->setText(QApplication::translate("MainWindow", "线环节点数:", nullptr));
+        label_3->setText(QApplication::translate("MainWindow", "充电桩数:", nullptr));
         applyConfigButton->setText(QApplication::translate("MainWindow", "\345\272\224\347\224\250\351\205\215\347\275\256", nullptr));
         label_4->setText(QApplication::translate("MainWindow", "\345\212\237\347\216\207\346\216\247\345\210\266", nullptr));
         powerSpinBox->setSuffix(QApplication::translate("MainWindow", " kW", nullptr));

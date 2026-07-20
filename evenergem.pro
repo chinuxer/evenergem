@@ -31,7 +31,7 @@ CONFIG(debug, debug|release) {
 # -------------------------------------------------
 win32 {
     # 设置应用程序图标（可选）
-    # RC_ICONS = app.ico
+    # RC_ICONS = appicon.ico
 
     # 确保生成 GUI 应用基础配置
     CONFIG += windows
@@ -118,13 +118,15 @@ FORMS += \
 RESOURCES += resources.qrc
 RC_ICONS = appicon.ico
 DEFINES += CUSTOM_HEAP_SIZE=0x00010000\
-           QTDEMOD_NODES_CAPACITY=36
+           QTDEMOD_NODES_CAPACITY=54
 # -------------------------------------------------
 # 4. 其他平台配置 (Unix/Linux/Mac)
 # -------------------------------------------------
 unix {
-    QMAKE_CXXFLAGS += -std=c++11 -Wall -Wextra
-    LIBS += -lm
+    QMAKE_CXXFLAGS += -std=c++11 -Wall -Wextra -fsanitize=address
+    QMAKE_LFLAGS += -fsanitize=address
+    LIBS += -lm -lasan
+    
 }
 
 # -------------------------------------------------

@@ -9,7 +9,7 @@ title Qt MinGW 64-bit Build Script
 set QT_MINGW_PATH=C:\Philistor\Qt\Qt5.12.12\5.12.12\mingw73_64\bin
 set MINGW_PATH=C:\Philistor\Qt\Qt5.12.12\Tools\mingw730_64\bin
 :: 设置 pro 文件名 (如果和 bat 文件名不同，请修改这里)
-set PRO_FILE=RingTopologyPower.pro
+set PRO_FILE=evenergem.pro
 
 :: ==========================================
 :: 2. 环境检查与设置
@@ -70,15 +70,15 @@ if errorlevel 1 (
 :: ==========================================
 echo.
 echo [INFO] 正在部署 Qt DLL (windeployqt)...
-if exist release\RingTopologyPower.exe (
-    windeployqt --release release\RingTopologyPower.exe
+if exist release\evenergem.exe (
+    windeployqt --release release\evenergem.exe
     echo [SUCCESS] 发布版构建并部署完成！
-    echo          可执行文件位置：release\RingTopologyPower.exe
-) else if exist debug\RingTopologyPower.exe (
+    echo          可执行文件位置：release\evenergem.exe
+) else if exist debug\evenergem.exe (
     :: 如果你编译的是 debug 版，把上面的 release 改成 debug，并加上 --debug 参数
-    windeployqt --debug debug\RingTopologyPower.exe
+    windeployqt --debug debug\evenergem.exe
     echo [SUCCESS] 调试版构建并部署完成！
-    echo          可执行文件位置：debug\RingTopologyPower.exe
+    echo          可执行文件位置：debug\evenergem.exe
 ) else (
     echo [WARNING] 未找到生成的 exe 文件，跳过部署步骤。
 )

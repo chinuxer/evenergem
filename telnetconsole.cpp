@@ -44,7 +44,7 @@ void TelnetConsole::incomingConnection(qintptr socketDescriptor)
     m_clients.insert(socket);
 
     // 发送欢迎消息
-    socket->write("\r\n=== RingTopologyPower Telnet Console ===\r\n");
+    socket->write("\r\n=== evenergem Telnet Console ===\r\n");
     socket->write("Connected. Debug output will be shown here.\r\n\r\n");
     socket->flush();
 

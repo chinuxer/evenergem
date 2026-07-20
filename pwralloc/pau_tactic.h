@@ -19,11 +19,14 @@ enum Senario
     SENARIO_PREEMPT = 0,
     SENARIO_SHARING,
     SENARIO_INHERIT,
-    SENARIO_ACQUIRE
+    SENARIO_ACQUIRE,
+    SENARIO_RELEASE,
+    SENARIO_SUBSIDY,
+
 };
 typedef struct
 {
-    ID_TYPE contactorid, direction;
+    ID_TYPE contactorid, direction, appendix;
 } FlowMap;
 
 typedef struct
@@ -42,12 +45,13 @@ size_t get_plug_allocated_cnt(ID_TYPE plugid);
 void clr_plug_allocated_cnt(ID_TYPE plugid);
 size_t get_plug_chargingmodules_cnt(ID_TYPE plugid);
 size_t *get_plug_hysteresisCnt(ID_TYPE plugid);
-ID_TYPE get_plug_connectednode(ID_TYPE plugid, ID_TYPE nodes_total, ID_TYPE plugs_total);
-void update_plug_contactors(ID_TYPE plugid, size_t *pool, size_t *index);
+ID_TYPE get_plug_connectednode(ID_TYPE plugid);
+
 void update_plug_shortage_power(ID_TYPE plugid);
 int get_plug_shortage(ID_TYPE plugid);
 void print_outcomes(ID_TYPE plugid);
-void flowDirectioned(ID_TYPE, FlowMap *);
+FlowMap *encircle_flowDirectioned(ID_TYPE, FlowMap *);
+void excircle_flowDirectioned(ID_TYPE, FlowMap *);
 int get_plug_charging_power(ID_TYPE plugid);
 
 bool get_plug_refresh_flag(ID_TYPE plugid);
@@ -60,4 +64,6 @@ ID_TYPE get_node_chargingplugid(ID_TYPE node);
 int get_node_available_power(ID_TYPE nodeid);
 NodeState get_node_state(ID_TYPE nodeid);
 PlugState get_plug_state(ID_TYPE plugid);
+bool plug_allocated_contain_node(ID_TYPE plugid, ID_TYPE nodeid);
+size_t get_plug_allocated_cnt_excircle(ID_TYPE plugid);
 #endif

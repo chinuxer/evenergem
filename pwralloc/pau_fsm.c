@@ -11,7 +11,39 @@
  */
 #include "pau_broker.h"
 #include "pau_tactic.h"
+void fillout_Outcomes(ID_TYPE chargeeID, FlowMap *map, St_PolicyTargetResult *outcome)
+{
+    outcome->PolicyTargetdPowerNode[0] = get_plug_connectednode(chargeeID);
 
+    outcome->PolicyTarget_RelayNo[0][0] = 0xfe;
+    outcome->PolicyTarget_RelayNo[0][1] = 0xff;
+    for (int n = 1; n < outcome->u8PolicyTargetPowerNodeNum; n++)
+    {
+        if (ID_VAIN == map[n - 1].direction || ID_VAIN == map[n - 1].contactorid)
+        {
+            break;
+        }
+        outcome->PolicyTargetdPowerNode[n] = map[n - 1].direction;
+        outcome->PolicyTarget_RelayNo[n][0] = map[n - 1].contactorid;
+        outcome->PolicyTarget_RelayNo[n][1] = map[n - 1].appendix;
+        if (ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX)
+        {
+            outcome->PolicyTarget_RelayNo[n][1] = 255;
+        }
+        if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX && map[n - 1].contactorid > 2 * NODES_MAX_ENCIRCLE && map[n - 1].appendix > ID_VAIN)
+        {
+            ID_TYPE appendix_contactor = map[n - 1].appendix;
+            appendix_contactor = (ID_TYPE)(appendix_contactor + NODES_MAX_ENCIRCLE);
+            outcome->PolicyTarget_RelayNo[n][1] = appendix_contactor;
+        }
+    }
+
+    pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
+    for (int n = 1; n <= outcome->u8PolicyTargetPowerNodeNum; n++)
+    {
+        pau_printf("[%d] = %02d %02d %02d\r\n", n, outcome->PolicyTargetdPowerNode[n - 1], outcome->PolicyTarget_RelayNo[n - 1][0], outcome->PolicyTarget_RelayNo[n - 1][1]);
+    }
+}
 /**
  * @brief Perform serviceable patrol on devices connected to a plug
  * Checks for faulty nodes or contactors and handles them by deordering
@@ -29,27 +61,19 @@ void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
         return;
     }
     print_outcomes(chargeeID);
-    memset(outcome->PolicyTargetdPowerNode, 0xff, MAXNODES_MEM_LMT);
-    memset(outcome->PolicyTarget_RelayNo, 0xff, MAXNODES_MEM_LMT * 2);
+    memset(outcome->PolicyTargetdPowerNode, 0, MAXNODES_MEM_LMT);
+    memset(outcome->PolicyTarget_RelayNo, 0, 2 * MAXNODES_MEM_LMT);
+
     outcome->u8PolicyTargetPowerNodeNum = get_plug_allocated_cnt(chargeeID);
-    FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN}};
-    flowDirectioned(chargeeID, map);
-    outcome->PolicyTargetdPowerNode[0] = get_plug_connectednode(chargeeID, NODE_MAX, PLUG_MAX);
-    outcome->PolicyTarget_RelayNo[0][0] = 0xfe;
-    for (int n = 1; n < outcome->u8PolicyTargetPowerNodeNum; n++)
-    {
-        if (ID_VAIN == map[n - 1].direction || ID_VAIN == map[n - 1].contactorid)
-        {
-            break;
-        }
-        outcome->PolicyTargetdPowerNode[n] = map[n - 1].direction;
-        outcome->PolicyTarget_RelayNo[n][0] = map[n - 1].contactorid;
-    }
-    pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
-    for (int n = 1; n <= outcome->u8PolicyTargetPowerNodeNum; n++)
-    {
-        pau_printf("[%d] = %02d %02d\r\n", n, outcome->PolicyTargetdPowerNode[n - 1], outcome->PolicyTarget_RelayNo[n - 1][0]);
-    }
+    FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN, ID_VAIN}};
+    FlowMap *pflow_map = encircle_flowDirectioned(chargeeID, map);
+    excircle_flowDirectioned(chargeeID, pflow_map);
+    // 打印map
+    // for (int n = 0; n < NODES_MAX_ENCIRCLE; n++)
+    //{
+    //    pau_printf("%d : %02d %02d %02d\r\n", n, map[n].direction, map[n].contactorid, map[n].appendix);
+    //}
+    fillout_Outcomes(chargeeID, map, outcome);
 }
 
 static void handle_init_cmd(void)

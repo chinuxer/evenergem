@@ -175,6 +175,35 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
 
     switch (senario)
     {
+    case SENARIO_SUBSIDY:
+    {
+        bool lower_nodeid_alpha = plug_allocated_contain_node(plugid, nodeid - NODES_MAX_ENCIRCLE);
+        bool lower_nodeid_beta = plug_allocated_contain_node(plugid, nodeid - NODES_MAX_ENCIRCLE / 2);
+        score += WEIGHT_5 * (get_node_state(nodeid) == NODE_IDLE ? 1 : 0);
+        score += WEIGHT_4 * lower_nodeid_alpha;
+        score += WEIGHT_4 * lower_nodeid_beta;
+        if (WEIGHT_4 + WEIGHT_5 <= score)
+        {
+            ID_TYPE connected_nodeid = get_plug_connectednode(plugid);
+
+            int hops_dist = 0;
+            if (lower_nodeid_alpha)
+            {
+                hops_dist = get_hops_occupied(connected_nodeid, nodeid - NODES_MAX_ENCIRCLE, plugid);
+            }
+            if (lower_nodeid_beta)
+            {
+                hops_dist = get_hops_occupied(connected_nodeid, nodeid - NODES_MAX_ENCIRCLE / 2, plugid);
+            }
+            score += WEIGHT_2 * (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - hops_dist);
+        }
+        else
+        {
+            score += WEIGHT_2 * (get_plug_allocated_cnt_excircle(plugid));
+        }
+
+        return score;
+    }
     case SENARIO_INHERIT:
     {
         score += WEIGHT_1 * (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1 - get_plug_chargingnodes_cnt(neighbor_plugid));
@@ -219,7 +248,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         score += WEIGHT_3 * (3 - occupied_count_neighbors);
         score += WEIGHT_4 * (module_adaptive);
         score += WEIGHT_5 * (hops != -1 ? 1 : 0);
-        score += WEIGHT_5 * (nodeid == get_plug_connectednode(plugid, NODE_MAX, PLUG_MAX) && 0 == get_dist(nodeid) ? 1 : 0);
+        score += WEIGHT_5 * (nodeid == get_plug_connectednode(plugid) && 0 == get_dist(nodeid) ? 1 : 0);
         score = ID_VAIN < get_node_chargingplugid(nodeid) ? 0 : score; // 如果是占用的节点,并且优先级大于等于本桩的优先级
         return score;
     }
@@ -263,8 +292,8 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         score += WEIGHT_4 * (is_midst_node ? 0 : 1);
         score += WEIGHT_5 * (hops != -1 ? 1 : 0);
         ID_TYPE node_chargingplugid = get_node_chargingplugid(nodeid);
-        score = (nodeid == get_plug_connectednode(node_chargingplugid, NODE_MAX, PLUG_MAX) ? 0 : score); // 直连节点不可以抢占
-        score = (get_node_priority(nodeid) >= get_plug_priority(plugid) ? 0 : score);                    // 如果是占用的节点,并且优先级大于等于本桩的优先级不可以抢占
+        score = (nodeid == get_plug_connectednode(node_chargingplugid) ? 0 : score);  // 直连节点不可以抢占
+        score = (get_node_priority(nodeid) >= get_plug_priority(plugid) ? 0 : score); // 如果是占用的节点,并且优先级大于等于本桩的优先级不可以抢占
         return score;
     }
     case SENARIO_SHARING:

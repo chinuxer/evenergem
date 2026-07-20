@@ -30,6 +30,12 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
     explicit MainWindow(TOPOTYPE topologyType, QWidget *parent = nullptr);
+    enum ItemDataKey
+    {
+        keyNode1,
+        keyNode2,
+        vislevel,
+    };
 private slots:
     void onApplyConfigClicked();
     void onRequestPowerClicked();
@@ -39,6 +45,7 @@ private slots:
     void onTopologyChanged();
     void onPriorityChanged();
     void showAboutDialog();
+    void onHelpGuideTriggered();
     // 手动操作测试
     void onAllocateNodeClicked();
     void onReleaseNodeClicked();
@@ -66,7 +73,7 @@ private:
     QPointF calculateNodePosition(int nodeId);
     // 计算充电桩位置
     QPointF calculatePilePosition(int pileIndex);
-    //计算半矩阵连接点
+    // 计算半矩阵连接点
     QPointF calculateJointPosition(int nodeIndex);
     double getYFromLineItemX(int nodeIndex, int nodescnt, double x, double meros);
     Ui::MainWindow *ui;
@@ -83,6 +90,7 @@ private:
     QVector<QGraphicsTextItem *> m_pileIdLabelItems;         // 充电桩ID标签（如"P1"）
     QVector<QGraphicsLineItem *> m_koinonItems;              // 矩阵和线环之间的线
     QVector<QGraphicsLineItem *> m_semiMatrixContactorItems; // 半矩阵接触器
+    QVector<QGraphicsRectItem *> m_semiMatrixJointItems;     // 半矩阵节点和接触器的相交点
     QVector<QGraphicsLineItem *> m_semiMatrixBusItems;       // 半矩阵母线
     QVector<QGraphicsRectItem *> m_matrixNodeItems;          // 矩阵节点
     QVector<QGraphicsEllipseItem *> m_jointItems;            // 矩阵节点和对角线接触器的相交点

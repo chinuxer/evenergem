@@ -24,6 +24,10 @@
 #include <QPixmap>
 #include <QSlider>
 #include <QGroupBox>
+#include <QDesktopServices>
+#include <QFile>
+#include <QDir>
+#include <QUrl>
 #include <cstddef>
 #include "pau_feeder.h"
 
@@ -201,7 +205,8 @@ MainWindow::MainWindow(TOPOTYPE topologyType, QWidget *parent)
     connect(ui->prioritySpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &MainWindow::onPriorityChanged);
     connect(ui->nodeListWidget, &QListWidget::currentRowChanged,
-            [this](int row) { m_selectedNode = row; });
+            [this](int row)
+            { m_selectedNode = row; });
     connect(ui->allocateNodeButton, &QPushButton::clicked, this, &MainWindow::onAllocateNodeClicked);
     connect(ui->releaseNodeButton, &QPushButton::clicked, this, &MainWindow::onReleaseNodeClicked);
     connect(m_topology, &SimpleTopology::topologyChanged, this, &MainWindow::onTopologyChanged);
@@ -320,6 +325,8 @@ MainWindow::MainWindow(TOPOTYPE topologyType, QWidget *parent)
     QMenu *helpMenu = menuBar->addMenu(tr("帮助(&H)"));
     QAction *aboutAction = helpMenu->addAction(tr("关于(&A)"));
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
+    QAction *guideAction = helpMenu->addAction(tr("说明书(&G)"));
+    connect(guideAction, &QAction::triggered, this, &MainWindow::onHelpGuideTriggered);
     setMenuBar(menuBar);
 
     // Telnet 客户端初始化（已在构造函数开头创建）
@@ -378,17 +385,22 @@ void MainWindow::onApplyConfigClicked()
 
     // 创建配置
     TopologyConfig config;
+    config.topotype = m_topologyType;
     config.nodeCount = nodeCount;
     config.pileCount = pileCount;
     config.unitPower = unitPower;
     config.circleRadius = 200.0;
     config.center = QPointF(300, 300);
-    if (SemiHybrid == m_topologyType) //如果是半矩阵半环形
+    if (SemiHybrid == m_topologyType) // 如果是半矩阵半环形
     {
         config.circleRadius = 200.0;
         config.center = QPointF(300, 500);
     }
     (void)::database_building(m_topologyType, nodeCount, pileCount);
+    for (int n = 1; n <= pileCount; n++)
+    {
+        clear_publish_outcomes(n);
+    }
     // 初始化拓扑
     m_topology->initialize(config);
 
@@ -619,6 +631,7 @@ void MainWindow::setupGraphicsScene()
     m_pileIdLabelItems.clear();         // 充电桩ID标签
     m_koinonItems.clear();              // 矩阵和线环之间的线
     m_semiMatrixContactorItems.clear(); // 半矩阵接触器
+    m_semiMatrixJointItems.clear();     // 半矩阵接触器相交点
     m_semiMatrixBusItems.clear();       // 半矩阵母线
     m_matrixNodeItems.clear();          // 矩阵节点
     m_jointItems.clear();               // 矩阵节点与对角线交点
@@ -650,7 +663,7 @@ void MainWindow::setupGraphicsScene()
         // 节点编号标签
         QGraphicsTextItem *label = new QGraphicsTextItem(QString::number(node.id));
         label->setDefaultTextColor(Qt::white); // 临时颜色，后续动态调整
-        label->setFont(QFont("Arial", 10, QFont::Bold));
+        label->setFont(QFont("Arial", 8, QFont::Bold));
         label->setZValue(99);
         QRectF labelRect = label->boundingRect();
         label->setPos(pos.x() - labelRect.width() / 2.0, pos.y() - labelRect.height() / 2.0);
@@ -658,15 +671,15 @@ void MainWindow::setupGraphicsScene()
         m_nodeLabelItems[i] = label;
     }
 
-    // 创建接触器图形项
-    m_contactorItems.resize(contactors.size());
-    for (int i = 0; i < contactors.size(); i++)
+    // 创建环形接触器图形项
+    m_contactorItems.resize(2 * nodes.size());
+    for (int i = 0; i < 2 * nodes.size(); i++)
     {
         const auto &contactor = contactors[i];
 
         // 检查节点ID是否有效
-        if (contactor.pau_data->node1 < 1 || contactor.pau_data->node1 > config.nodeCount ||
-            contactor.pau_data->node2 < 1 || contactor.pau_data->node2 > config.nodeCount)
+        if (contactor.pau_data->node1 < 1 || contactor.pau_data->node1 > NODE_MAX ||
+            contactor.pau_data->node2 < 1 || contactor.pau_data->node2 > NODE_MAX * CONTACTOR_SPLICE_MULTIPLE)
         {
             qWarning() << "无效的接触器节点:" << contactor.id << contactor.pau_data->node1 << "-" << contactor.pau_data->node2;
             continue;
@@ -688,21 +701,32 @@ void MainWindow::setupGraphicsScene()
         if (i < config.nodeCount)
         {
             line->setPen(QPen(Qt::gray, 2, Qt::DashLine)); // 环形接触器
+            line->setToolTip(QString("接触器编号 %1, 1%2")
+                                 .arg(contactor.pau_data->id)
+                                 .arg(i + 1, 2, 10, QChar('0')));
         }
         else
         {
             line->setPen(QPen(Qt::darkGray, 2, Qt::DotLine)); // 对角线接触器
+            line->setToolTip(QString("接触器编号 %1, 2%2")
+                                 .arg(contactor.pau_data->id)
+                                 .arg(i + 1 - config.nodeCount, 2, 10, QChar('0')));
         }
-        m_scene->addItem(line);
+
+        if (SemiHybrid != m_topologyType || i < config.nodeCount)
+        {
+            m_scene->addItem(line);
+        }
         m_contactorItems[i] = line;
     }
-    //创建矩阵节点和对角线交点
+    // 创建矩阵节点和对角线交点
     if (SemiHybrid == m_topologyType)
     {
         int matrix_contactors_num = ::factorial(config.nodeCount / 2);
         m_koinonItems.resize(config.nodeCount);                   // 矩阵和线环之间的线
         m_semiMatrixContactorItems.resize(matrix_contactors_num); // 半矩阵接触器
-        m_semiMatrixBusItems.resize(matrix_contactors_num);       // 半矩阵母线
+        m_semiMatrixJointItems.resize(matrix_contactors_num);     // 半矩阵接触器相交点
+        m_semiMatrixBusItems.resize(config.nodeCount / 2);        // 半矩阵母线
         m_matrixNodeItems.resize(config.nodeCount);               // 矩阵节点
         m_jointItems.resize(config.nodeCount);                    // 矩阵节点与对角线交点
 
@@ -714,6 +738,20 @@ void MainWindow::setupGraphicsScene()
             circle->setZValue(99);
             m_scene->addItem(circle);
             m_jointItems[i - 1] = circle;
+            // 根据m_jointItems修改环形接触器的起始点
+            QLineF lf = m_contactorItems[3 * config.nodeCount / 2 + i - 1]->line();
+            lf.setP2(QPointF(m_jointItems[i - 1]->x(), m_jointItems[i - 1]->y()));
+            m_contactorItems[3 * config.nodeCount / 2 + i - 1]->setLine(lf);
+            m_contactorItems[3 * config.nodeCount / 2 + i - 1]->setPen(QPen(Qt::darkGray, 2, Qt::DashLine));
+            lf = m_contactorItems[config.nodeCount + i - 1]->line();
+            lf.setP2(QPointF(m_jointItems[i - 1]->x(), m_jointItems[i - 1]->y()));
+            m_contactorItems[config.nodeCount + i - 1]->setLine(lf);
+            m_contactorItems[config.nodeCount + i - 1]->setPen(QPen(Qt::darkGray, 2, Qt::SolidLine));
+            m_scene->addItem(m_contactorItems[3 * config.nodeCount / 2 + i - 1]);
+            m_scene->addItem(m_contactorItems[config.nodeCount + i - 1]);
+            //  打印接触器起始位置
+            // qDebug() << "接触器" << (3 * config.nodeCount / 2 + i - 1) << "起始位置:" << m_contactorItems[3 * config.nodeCount / 2 + i - 1]->line().p1() << "终止位置:" << m_contactorItems[3 * config.nodeCount / 2 + i - 1]->line().p2();
+            // qDebug() << "接触器" << (config.nodeCount + i - 1) << "起始位置:" << m_contactorItems[config.nodeCount + i - 1]->line().p1() << "终止位置:" << m_contactorItems[config.nodeCount + i - 1]->line().p2();
         }
         // 创建半矩阵节点图形项
         double meros = (config.circleRadius + 25) / (config.nodeCount / 2 + 1);
@@ -728,14 +766,15 @@ void MainWindow::setupGraphicsScene()
             m_scene->addItem(item);
             m_matrixNodeItems[i] = item;
             QGraphicsTextItem *label = new QGraphicsTextItem(QString::number(config.nodeCount + i + 1));
-            label->setPos(pos.x() - 10, pos.y() - 12);
+            label->setPos(pos.x() - 10, pos.y() - 11);
             label->setDefaultTextColor(Qt::black); // 临时颜色，后续动态调整
-            label->setFont(QFont("Arial", 10, QFont::Bold));
+            label->setFont(QFont("Arial", 8, QFont::Bold));
             label->setZValue(99);
             m_scene->addItem(label);
         }
         for (int i = 0; i < config.nodeCount / 2; i++)
         {
+            const auto &contactor = contactors[i + matrix_contactors_num + 2 * config.nodeCount];
             QGraphicsLineItem *connLine = new QGraphicsLineItem(
                 m_matrixNodeItems[i]->x(), m_matrixNodeItems[i]->y(), m_jointItems[i]->x(), m_jointItems[i]->y());
             QLinearGradient grad(m_matrixNodeItems[i]->x(), m_matrixNodeItems[i]->y(), m_jointItems[i]->x(), m_jointItems[i]->y());
@@ -751,6 +790,10 @@ void MainWindow::setupGraphicsScene()
             pen.setWidth(2); // 粗线才能看清渐变
             pen.setCapStyle(Qt::RoundCap);
             connLine->setPen(pen);
+            connLine->setToolTip(QString("接触器编号 %1, 4%2")
+                                     .arg(i + matrix_contactors_num + 2 * config.nodeCount + 1)
+                                     .arg(i + 1, 2, 10, QChar('0')));
+
             m_scene->addItem(connLine);
             m_koinonItems[i] = connLine;
         }
@@ -775,10 +818,29 @@ void MainWindow::setupGraphicsScene()
         {
             for (int node2 = node1 + 1; node2 <= config.nodeCount / 2 && contactorIdx < matrix_contactors_num; node2++)
             {
+                const auto &contactor = contactors[contactorIdx + 2 * config.nodeCount];
                 QGraphicsLineItem *connLine = new QGraphicsLineItem(m_matrixNodeItems[node1 - 1]->x(), m_matrixNodeItems[node1 - 1]->y(), m_matrixNodeItems[node2 - 1]->x(), m_matrixNodeItems[node1 - 1]->y());
                 connLine->setPen(QPen(Qt::lightGray, 1, Qt::DotLine));
+                connLine->setData(keyNode1, node1);
+                connLine->setData(keyNode2, node2);
+                connLine->setToolTip(QString("接触器编号 %1, 3%2")
+                                         .arg(contactorIdx + 1 + 2 * config.nodeCount)
+                                         .arg(contactorIdx + 1, 2, 10, QChar('0')));
+
+                connLine->setZValue(80 - contactorIdx);
+                connLine->setData(vislevel, 80 - contactorIdx);
                 m_scene->addItem(connLine);
                 m_semiMatrixContactorItems[contactorIdx] = connLine;
+
+                QGraphicsRectItem *item = new QGraphicsRectItem(-4, -4, 8, 8);
+                item->setPos(QPointF(m_matrixNodeItems[node2 - 1]->x(), m_matrixNodeItems[node1 - 1]->y()));
+                item->setBrush(Qt::lightGray);
+
+                item->setZValue(98);
+                item->setData(keyNode1, node1);
+                item->setData(keyNode2, node2);
+                m_scene->addItem(item);
+                m_semiMatrixJointItems[contactorIdx] = item;
                 contactorIdx++;
             }
         }
@@ -816,7 +878,7 @@ void MainWindow::setupGraphicsScene()
         QGraphicsTextItem *idLabel = new QGraphicsTextItem(QString("P%1").arg(pile.id));
         idLabel->setPos(pilePos.x() - 12, pilePos.y() - 12);
         idLabel->setDefaultTextColor(Qt::white); // 临时颜色，后续动态调整
-        idLabel->setFont(QFont("Arial", 10, QFont::Bold));
+        idLabel->setFont(QFont("Arial", 8, QFont::Bold));
         QRectF labelRect = idLabel->boundingRect();
         idLabel->setPos(pilePos.x() - labelRect.width() / 2.0, pilePos.y() - labelRect.height() / 2.0);
         idLabel->setZValue(1);
@@ -860,6 +922,7 @@ void MainWindow::updateGraphics()
     const auto &nodes = m_topology->getNodes();
     const auto &contactors = m_topology->getContactors();
     const auto &piles = m_topology->getChargingPiles();
+    const auto &matrixnodes = m_topology->getMatrixNodes();
     const auto &config = m_topology->getConfig();
 
     // 更新节点颜色
@@ -901,7 +964,7 @@ void MainWindow::updateGraphics()
     }
 
     // 更新接触器 - 根据连接的充电桩着色
-    for (int i = 0; i < contactors.size() && i < m_contactorItems.size() && i < config.nodeCount + config.nodeCount / 2; i++)
+    for (int i = 0; i < contactors.size() && i < m_contactorItems.size() && i < 2 * config.nodeCount; i++)
     {
         if (m_contactorItems[i])
         {
@@ -911,7 +974,7 @@ void MainWindow::updateGraphics()
             if (contactor.pau_data->isClosed)
             {
                 // 确定使用哪个充电桩的颜色，如果两个节点连接的充电桩不同，则使用默认灰色
-                int chargerId = get_contactor_pwrflow_dest(contactor.id);
+                int chargerId = get_contactor_pwrflow_dest(contactor.pau_data->id);
 
                 if (chargerId > 0 && chargerId <= piles.size())
                 {
@@ -922,7 +985,7 @@ void MainWindow::updateGraphics()
                 else
                 {
                     // 默认灰色
-                    pen = QPen(Qt::gray, 2, Qt::SolidLine);
+                    pen = QPen(Qt::gray, 2, Qt::DashLine);
                 }
             }
             else
@@ -938,11 +1001,6 @@ void MainWindow::updateGraphics()
                 }
             }
             m_contactorItems[i]->setPen(pen);
-            if (i >= config.nodeCount) // 对角线接触器有两个,但只处理第一个,另一个实际上不存在,在图中需要保持和第一个颜色一致
-            {
-                int j = i + config.nodeCount / 2;
-                m_contactorItems[j]->setPen(pen);
-            }
         }
     }
 
@@ -1005,7 +1063,144 @@ void MainWindow::updateGraphics()
             m_pileLabelItems[i]->setPos(pos.x() - 35, pos.y() + 20);
         }
     }
+    if (SemiHybrid == m_topologyType)
+    {
+        // 更新矩阵和线环之间的线
+        for (int i = 0; i < config.nodeCount / 2; i++)
+        {
+            if (m_koinonItems[i])
+            {
+                int baseindex = contactors.size() - config.nodeCount / 2;
+                const auto &contactor = contactors[baseindex + i];
+                QColor color;
+
+                if (contactor.pau_data->isClosed)
+                {
+                    // 确定使用哪个充电桩的颜色，如果两个节点连接的充电桩不同，则使用默认灰色
+                    int chargerId = get_contactor_pwrflow_dest(contactor.pau_data->id);
+
+                    if (chargerId > 0 && chargerId <= piles.size())
+                    {
+                        // 使用充电桩的颜色，加粗显示
+                        color = piles[chargerId - 1].color;
+
+                        m_jointItems[i]->setBrush(QBrush(color));
+                    }
+                    else
+                    {
+                        // 默认灰色
+                        color = Qt::gray;
+                        m_jointItems[i]->setBrush(QBrush(Qt::gray));
+                    }
+                }
+                else
+                {
+                    color = Qt::gray;
+                    m_jointItems[i]->setBrush(QBrush(Qt::gray));
+                }
+                // 重新创建渐变笔，保持从起点到终点的渐变
+                QLineF line = m_koinonItems[i]->line();
+                QLinearGradient grad(line.p1(), line.p2());
+                grad.setColorAt(0, color);
+                grad.setColorAt(1, QColor(color.red(), color.green(), color.blue(), 0)); // 终点透明
+
+                QPen pen;
+                pen.setBrush(grad);
+                pen.setWidth(2);
+                pen.setStyle(Qt::SolidLine);
+                pen.setCapStyle(Qt::RoundCap);
+                m_koinonItems[i]->setPen(pen);
+            }
+        }
+        for (int i = 2 * config.nodeCount + 1; i <= contactors.size() - config.nodeCount / 2; i++)
+        {
+            if (m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1])
+            {
+
+                const auto &contactor = contactors[i - 1];
+                QPen pen;
+                if (contactor.pau_data->isClosed)
+                {
+                    // 确定使用哪个充电桩的颜色，如果两个节点连接的充电桩不同，则使用默认灰色
+                    int chargerId = get_contactor_pwrflow_dest(contactor.pau_data->id);
+
+                    if (chargerId > 0 && chargerId <= piles.size())
+                    {
+                        // 使用充电桩的颜色，加粗显示
+                        QColor pileColor = piles[chargerId - 1].color;
+                        pen = QPen(pileColor, 2, Qt::SolidLine);
+                        m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1]->setPen(pen);
+                        m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1]->setZValue(80 + 1);
+                        m_semiMatrixJointItems[i - 2 * config.nodeCount - 1]->setBrush(QBrush(pen.color()));
+                    }
+                    else
+                    {
+                        // 默认灰色
+                        pen = QPen(Qt::gray, 1, Qt::DotLine);
+                        m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1]->setPen(pen);
+                        int level = m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1]->data(vislevel).toInt();
+                        m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1]->setZValue(level);
+                        m_semiMatrixJointItems[i - 2 * config.nodeCount - 1]->setBrush(QBrush(pen.color()));
+                    }
+                }
+                else
+                {
+                    pen = QPen(Qt::gray, 1, Qt::DotLine); //
+                    m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1]->setPen(pen);
+                    int level = m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1]->data(vislevel).toInt();
+                    m_semiMatrixContactorItems[i - 2 * config.nodeCount - 1]->setZValue(level);
+                    m_semiMatrixJointItems[i - 2 * config.nodeCount - 1]->setBrush(QBrush(pen.color()));
+                }
+            }
+        }
+        for (int i = 0; i < matrixnodes.size(); i++)
+        {
+            const auto &node = matrixnodes[i];
+            QBrush brush = Qt::lightGray;
+            QColor color;
+            if (node.pau_data->state == NODE_OCCUPIED && node.pau_data->plug_id > 0)
+            {
+                int chargerIndex = node.pau_data->plug_id - 1;
+                if (chargerIndex >= 0 && chargerIndex < piles.size())
+                {
+                    color = piles[chargerIndex].color;
+                    brush = color;
+                }
+                else
+                {
+                    color = Qt::gray;
+                    brush = Qt::gray;
+                }
+            }
+            else if (node.pau_data->state == NODE_DISABLED)
+            {
+                color = QColor(15, 20, 34);
+                brush = color;
+            }
+            else
+            {
+                color = Qt::gray;
+                brush = Qt::gray;
+            }
+
+            if (m_matrixNodeItems[i])
+            {
+                m_matrixNodeItems[i]->setBrush(brush);
+            }
+
+            if (m_semiMatrixBusItems[i])
+            {
+                // 保留原有的宽度（3）和实线样式，只修改颜色
+                QPen pen = m_semiMatrixBusItems[i]->pen();
+                pen.setColor(color);
+                pen.setWidth(3); // 保持原始宽度
+                pen.setStyle(Qt::SolidLine);
+                m_semiMatrixBusItems[i]->setPen(pen);
+            }
+        }
+    }
 }
+
 void MainWindow::updateStatusDisplay()
 {
     const auto &nodes = m_topology->getNodes();
@@ -1109,7 +1304,7 @@ QPointF MainWindow::calculateNodePosition(int nodeId)
     const auto &config = m_topology->getConfig();
 
     double angle = 2 * M_PI * (nodeId - 1) / config.nodeCount;
-    if (SemiHybrid == m_topologyType) //如果是SemiHybrid结构
+    if (SemiHybrid == m_topologyType) // 如果是SemiHybrid结构
     {
         angle += M_PI / config.nodeCount;
     }
@@ -1183,7 +1378,7 @@ void MainWindow::showAboutDialog()
     layout->addWidget(iconLabel);
 
     // 软件名称和版本
-    QLabel *titleLabel = new QLabel(tr("<h2>allocyclus</h2>"));
+    QLabel *titleLabel = new QLabel(tr("<h2>evenergem</h2>"));
     titleLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(titleLabel);
 
@@ -1224,6 +1419,45 @@ void MainWindow::showAboutDialog()
     layout->addWidget(closeBtn, 0, Qt::AlignCenter);
 
     aboutDialog.exec();
+}
+void MainWindow::onHelpGuideTriggered()
+{
+    // 资源路径
+    QString resourcePath = ":manual.pdf";
+
+    // 检查资源是否存在
+    QFile resFile(resourcePath);
+    if (!resFile.exists())
+    {
+        QMessageBox::warning(this, tr("错误"), tr("说明书文件未找到"));
+        return;
+    }
+
+    // 复制到临时目录（保留 .pdf 扩展名以便系统正确关联）
+    QString tempFilePath = QDir::temp().absoluteFilePath("evenergem_manual.pdf");
+
+    // 如果已有旧文件，先删除
+    if (QFile::exists(tempFilePath))
+    {
+        QFile::remove(tempFilePath);
+    }
+
+    // 复制资源到临时文件
+    if (!QFile::copy(resourcePath, tempFilePath))
+    {
+        QMessageBox::warning(this, tr("错误"), tr("无法复制说明书文件"));
+        return;
+    }
+
+    // 设置文件权限（确保可读）
+    QFile::setPermissions(tempFilePath, QFileDevice::ReadUser | QFileDevice::WriteUser);
+
+    // 使用系统默认程序打开 PDF
+    bool success = QDesktopServices::openUrl(QUrl::fromLocalFile(tempFilePath));
+    if (!success)
+    {
+        QMessageBox::warning(this, tr("错误"), tr("无法打开 PDF 文件，请确保已安装 PDF 阅读器"));
+    }
 }
 void MainWindow::onToggleNodeEnableClicked()
 {

@@ -66,7 +66,7 @@ extern "C"
 #if defined(__IAR_SYSTEMS_ICC__)
 #define IN_PAU_RAM_SECTION __attribute__((section(".pau_ram_section"), aligned(4)))
 #define IN_PAU_HEAP_SECTION __attribute__((section(".pau_heap_section")))
-#define pau_printf(fmt, ...) printf("\033[33m" fmt "\033[0m", ##__VA_ARGS__)
+#define pau_printf(fmt, ...) d_printf("\033[33m" fmt "\033[0m", ##__VA_ARGS__)
 #else
 #define IN_PAU_RAM_SECTION
 #define IN_PAU_HEAP_SECTION
@@ -81,12 +81,14 @@ void pau_log_printf(const char *fmt, ...);
         SRAM_SPAN = 0,
         HEAP_SPAN,
         INIT_SPAN,
+        RATE_SPAN
     } PAU_MALLOC_CURSE;
 // magic word,The canary value is set at the buffer edge; put simply, it detects memory overflow in advance
 #define FRONT_MAGICWORD 0xDEADCAFEu
 #define REAR_MAGICWORD 0xBABEFACEu
 #define ID_VAIN 0
-    typedef union {
+    typedef union
+    {
         ID_TYPE modules[MAX_MODULES_PER_NODE + 1]; // size + 节点包含的模块编号
         struct
         {
@@ -189,15 +191,19 @@ VARIABLE_LIST_PENDING_EXPANDED
 #define CONTACTOR_MAX (gpContactorsArray->length)
 #define UNITPWR_MAX (gpNodesArray->unitpower)
 #define TOPOLOGY_TYPE (gpNodesArray->topology)
-#define NODES_ENCIRCLE (gpNodesArray->circulo)
-
+#define NODES_MAX_ENCIRCLE (gpNodesArray->circulo)
+#define ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX (NODES_MAX_ENCIRCLE != NODE_MAX)
+#define ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX (NODES_MAX_ENCIRCLE == NODE_MAX)
+#define CONTACTOR_SPLICE_MULTIPLE 100
 #define ASSERT_NODE_ID(id) ((id) <= NODE_MAX && (id) > ID_VAIN)
+#define ASSERT_NODE_ID_ENCIRCLE(id) ((id) <= NODES_MAX_ENCIRCLE && (id) > ID_VAIN)
 #define ASSERT_PLUG_ID(id) ((id) <= PLUG_MAX && (id) > ID_VAIN)
 #define ASSERT_CONTACTOR_ID(id) ((id) <= CONTACTOR_MAX && (id) > ID_VAIN)
 #define FORCE_INLINE __attribute__(always_inline)
 
 #ifdef __IMPORT_PAU_DBFUNC__
-    void *pau_alloc(size_t size, PAU_MALLOC_CURSE span)
+    void *
+    pau_alloc(size_t size, PAU_MALLOC_CURSE span)
     {
 #define ALIGNMENT_SIZE sizeof(size_t)
 #define ALIGN_SIZE(s) (((s) + ALIGNMENT_SIZE - 1) & ~(ALIGNMENT_SIZE - 1))
@@ -213,7 +219,7 @@ VARIABLE_LIST_PENDING_EXPANDED
             void *new_ptr = (void *)(custom_mem_pool + *custom_mem_offset);
             *custom_mem_offset += size;
             memset(new_ptr, 0, size);
-            pau_printf("%s: %p\r\n", "SRAM_SPAN", new_ptr);
+            // pau_printf("%s: %p\r\n", "SRAM_SPAN", new_ptr);
             return new_ptr;
         }
         else if (HEAP_SPAN == span)
@@ -230,12 +236,16 @@ VARIABLE_LIST_PENDING_EXPANDED
                     break;
                 }
             }
-            //pau_printf("%s: %p \r\n", "HEAP_SPAN", new_ptr);
+            // pau_printf("%s: %p \r\n", "HEAP_SPAN", new_ptr);
             return new_ptr;
         }
         else if (INIT_SPAN == span)
         {
             *custom_mem_offset = sizeof(size_t);
+        }
+        else if (RATE_SPAN == span)
+        {
+            pau_printf("PAU_HEAP_USAGE: %.2f%% %p/%p\r\n", (float)(*custom_mem_offset) / CUSTOM_HEAP_SIZE * 100, *custom_mem_offset, CUSTOM_HEAP_SIZE);
         }
         return NULL;
     }
@@ -302,7 +312,8 @@ VARIABLE_LIST_PENDING_EXPANDED
         }
     }
 #else
-void *pau_calloc(size_t size, const char *func_name);
+void *
+pau_calloc(size_t size, const char *func_name);
 struct Alloc_nodeObj *refer_Node_Extracted(ID_TYPE node);
 struct Alloc_plugObj *refer_Plug_Extracted(ID_TYPE plug);
 struct Alloc_contactorObj *refer_Contactor_Extracted(ID_TYPE contactor);

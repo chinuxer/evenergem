@@ -39,6 +39,7 @@ struct ChargingPile
 // 拓扑配置
 struct TopologyConfig
 {
+    TOPOTYPE topotype;   // 拓扑类型
     int nodeCount;       // 节点数量
     int pileCount;       // 充电桩数量
     int unitPower;       // 单模块节点功率
@@ -77,6 +78,7 @@ public:
     void initialize(const TopologyConfig &config);
 
     // 获取拓扑数据
+    const QVector<PowerNode> &getMatrixNodes() const { return m_matrixnodes; }
     const QVector<PowerNode> &getNodes() const { return m_nodes; }
     const QVector<Contactor> &getContactors() const { return m_contactors; }
     const QVector<ChargingPile> &getChargingPiles() const { return m_piles; }
@@ -109,6 +111,7 @@ private:
     QVector<PowerNode> m_nodes;
     QVector<Contactor> m_contactors;
     QVector<ChargingPile> m_piles;
+    QVector<PowerNode> m_matrixnodes;
 
     // 生成颜色列表
     QVector<QColor> generateColors(int count);

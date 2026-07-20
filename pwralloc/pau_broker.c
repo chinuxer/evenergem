@@ -8,7 +8,7 @@
   @brief   数据结构在内存中的代理,实现对节点,充电桩,接触器等数据的访问和修改
   @history 2026-04-27 YBA40320 创建;2026-05-15 YBA40320 从模拟机移植到A2605线环1500kW工程
   @details
- 
+
  ************************************************************************************************************************************************************************/
 
 #define __IMPORT_GLOBALVAR__
@@ -51,7 +51,7 @@ static void modulesPerNode_Init(struct Alloc_nodeObj *pnode)
     }
     pnode->moudle_box.size = module_nbr_map[pnode->id - 1];
 }
-ID_TYPE get_plug_connectednode(ID_TYPE plugid, ID_TYPE nodes_total, ID_TYPE plugs_total)
+ID_TYPE calc_plug_connectednode(ID_TYPE plugid, ID_TYPE nodes_total, ID_TYPE plugs_total)
 {
     ID_TYPE nodeid = 1 + (plugid - 1) * (nodes_total / plugs_total);
     return nodeid > nodes_total ? nodes_total : nodeid;
@@ -76,7 +76,7 @@ static void Alloc_NodesArray_Init(void *const ptr, size_t n)
     Alloc_NodesArray *p = (Alloc_NodesArray *)ptr;
     p->length = n;
     p->unitpower = oprt_ratedpwr_per_module(0);
-    p->circulo = 0;
+    p->circulo = n;
     p->front_canary = FRONT_MAGICWORD;
     for (ID_TYPE i = 1; i <= n; i++)
     {
@@ -104,13 +104,13 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
         p->obj_array[i].priority = PRIOR_VAIN;
         p->obj_array[i].state = PLUG_IDLE;
         p->obj_array[i].id = i;
-        if (NODES_ENCIRCLE > 0)
+        if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
         {
-            p->obj_array[i].connectedNode = get_plug_connectednode(i, NODES_ENCIRCLE, n);
+            p->obj_array[i].connectedNode = calc_plug_connectednode(i, NODES_MAX_ENCIRCLE, n);
         }
         else
         {
-            p->obj_array[i].connectedNode = get_plug_connectednode(i, NODE_MAX, n);
+            p->obj_array[i].connectedNode = calc_plug_connectednode(i, NODE_MAX, n);
         }
         p->obj_array[i].requiredPower = 0;
         p->obj_array[i].hysteresisCnt = 0;
@@ -133,6 +133,7 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
 }
 static void Alloc_ContactorsArray_Init(void *const ptr, size_t n)
 {
+
     if (!(bool)ptr)
     {
         return;
@@ -143,11 +144,12 @@ static void Alloc_ContactorsArray_Init(void *const ptr, size_t n)
     p->front_canary = FRONT_MAGICWORD;
     // 创建环形接触器链路
     size_t initcnt = n;
-    n = NODE_MAX;
+
     if (initcnt != 2 * NODE_MAX || 0 != NODE_MAX % 2)
     {
-        n = 2 * NODE_MAX / 3;
+        NODES_MAX_ENCIRCLE = 2 * NODE_MAX / 3;
     }
+    n = NODES_MAX_ENCIRCLE;
     for (ID_TYPE i = 1; i <= n; i++)
     {
         p->obj_array[i].id = i;
@@ -163,24 +165,38 @@ static void Alloc_ContactorsArray_Init(void *const ptr, size_t n)
         p->obj_array[n + i].node1 = i;
         p->obj_array[n + i].node2 = i + n / 2 > n ? i + n / 2 - n : i + n / 2;
     }
-    //创建半矩阵节点的接触器链路
+    // 创建半矩阵节点的接触器链路
     if (initcnt != 2 * NODE_MAX || 0 != NODE_MAX % 2) // nodes 12 + matrix 6 = 18  4*18/3 = 2*12
     {
-        NODES_ENCIRCLE = n;
-        size_t contactorIdx = 2 * NODES_ENCIRCLE + 1; // 从25开始
-        n = NODES_ENCIRCLE / 2;
+        size_t contactorIdx = 2 * NODES_MAX_ENCIRCLE + 1; // 从25开始
+        n = NODES_MAX_ENCIRCLE / 2;
         for (ID_TYPE node1 = 1; node1 <= n && contactorIdx <= initcnt; node1++)
         {
-            for (ID_TYPE node2 = node1; node2 <= n && contactorIdx <= initcnt; node2++)
+            for (ID_TYPE node2 = node1 + 1; node2 <= n && contactorIdx <= initcnt; node2++)
             {
                 p->obj_array[contactorIdx].id = contactorIdx;
                 p->obj_array[contactorIdx].isClosed = false;
-                p->obj_array[contactorIdx].node1 = node1 + NODES_ENCIRCLE;
-                p->obj_array[contactorIdx].node2 = node2 + NODES_ENCIRCLE;
+                p->obj_array[contactorIdx].node1 = node1 + NODES_MAX_ENCIRCLE;
+                p->obj_array[contactorIdx].node2 = node2 + NODES_MAX_ENCIRCLE;
+
                 contactorIdx++;
             }
         }
+        for (ID_TYPE node1 = 1; node1 <= n && contactorIdx <= initcnt; node1++)
+        {
+            p->obj_array[contactorIdx].id = contactorIdx;
+            p->obj_array[contactorIdx].isClosed = false;
+            p->obj_array[contactorIdx].node1 = node1 + NODES_MAX_ENCIRCLE;
+            p->obj_array[contactorIdx].node2 = node1 * CONTACTOR_SPLICE_MULTIPLE + node1 + n;
+            contactorIdx++;
+        }
+        // for (ID_TYPE i = 1; i < contactorIdx; i++)
+        // {
+        //     pau_printf("contactor %d: node1=%d, node2=%d\r\n", p->obj_array[i].id, p->obj_array[i].node1, p->obj_array[i].node2);
+        // }
     }
+    // 打印所有接触器的连接点
+
     *GET_REAR_CANARY_PTR(p, Alloc_ContactorsArray) = REAR_MAGICWORD;
 }
 
@@ -214,7 +230,7 @@ static void *create_FlexStruct_Array(size_t header_size, size_t element_size, si
         pau_printf("!!!flexible array mem allocation failed\r\n");
         return NULL;
     }
-    // 元编程模版告知IAR编译器需要调用的函数地址，优化时尽量最近跳转调用
+    // 元编程模版告知IAR编译器需要调用的函数地址，优化时尽量最近,跳转调用
 #define CONTEXT_EXPANDER_PROJ_GLOBAL(x) Alloc_##x##Array_Init,
 #pragma calls = VARIABLE_LIST_PENDING_EXPANDED
     init_func(ptr, count);
@@ -250,6 +266,7 @@ bool database_building(TOPOTYPE topology, size_t nodes_num, size_t plugs_num)
     VARIABLE_LIST_PENDING_EXPANDED
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
     TOPOLOGY_TYPE = topology;
+    pau_alloc(0, RATE_SPAN);
     return true;
 }
 bool hear_Canaries_Twittering(void)
@@ -363,6 +380,23 @@ size_t get_plug_allocated_cnt(ID_TYPE plugid)
     }
     return refer_Plug_Extracted(plugid)->allocatedNodes->size;
 }
+size_t get_plug_allocated_cnt_excircle(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return 0;
+    }
+    size_t cnt = 0;
+    PAU_VECTOR_FOREACH(nodeid, refer_Plug_Extracted(plugid)->allocatedNodes)
+    {
+
+        if (nodeid > NODES_MAX_ENCIRCLE)
+        {
+            cnt++;
+        }
+    }
+    return cnt;
+}
 void clr_plug_allocated_cnt(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
@@ -387,28 +421,7 @@ size_t get_plug_chargingmodules_cnt(ID_TYPE plugid)
     }
     return cnt;
 }
-void update_plug_contactors(ID_TYPE plugid, size_t *pool)
-{
-    if (!ASSERT_PLUG_ID(plugid))
-    {
-        return;
-    }
-    int index = 1;
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    for (size_t contactorid = 1; contactorid <= CONTACTOR_MAX; contactorid++)
-    {
-        struct Alloc_contactorObj *c = refer_Contactor_Extracted(contactorid);
-        if (!c->isClosed)
-        {
-            continue;
-        }
-        if (pau_vector_contains(pplug->allocatedNodes, c->node1) && pau_vector_contains(pplug->allocatedNodes, c->node2))
-        {
-            *(pool + index) = contactorid;
-            index += 1;
-        }
-    }
-}
+
 int get_plug_shortage(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
@@ -447,6 +460,10 @@ int get_plug_charging_power(ID_TYPE plugid)
 }
 void update_plug_shortage_power(ID_TYPE plugid)
 {
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return;
+    }
     int power_total = get_plug_charging_power(plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     int shortage_power = (int)(pplug->requiredPower) - power_total;
@@ -475,4 +492,23 @@ void set_plug_refresh_flag(ID_TYPE plugid, bool val)
         return;
     }
     refer_Plug_Extracted(plugid)->refresh = val;
+}
+
+ID_TYPE get_plug_connectednode(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return NODE_MAX;
+    }
+    return refer_Plug_Extracted(plugid)->connectedNode;
+}
+
+bool plug_allocated_contain_node(ID_TYPE plugid, ID_TYPE nodeid)
+{
+    if (!ASSERT_PLUG_ID(plugid) || !ASSERT_NODE_ID(nodeid))
+    {
+        return false;
+    }
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    return pau_vector_contains(pplug->allocatedNodes, nodeid);
 }

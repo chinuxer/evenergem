@@ -23,6 +23,10 @@ int get_contactor_pwrflow_dest(int contactorId)
     {
         return -1;
     }
+    if (ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX && contactorId <= 2 * NODES_MAX_ENCIRCLE && contactorId > 3 * NODES_MAX_ENCIRCLE / 2)
+    {
+        contactorId -= NODES_MAX_ENCIRCLE / 2;
+    }
     for (int i = 0; i < MAXNODES_MEM_LMT; i++)
     {
         if (gtarget_result[i].u8PolicyTargetPowerNodeNum == 0)
@@ -35,13 +39,17 @@ int get_contactor_pwrflow_dest(int contactorId)
             {
                 return i + 1;
             }
+            if (gtarget_result[i].PolicyTarget_RelayNo[j][1] == contactorId)
+            {
+                return i + 1;
+            }
         }
     }
     return -1;
 }
 
 #ifdef __cplusplus
-//将对应充电桩id的节点分配结果PolicyTargetdPowerNode转成QList<int>，用于Qt界面显示
+// 将对应充电桩id的节点分配结果PolicyTargetdPowerNode转成QList<int>，用于Qt界面显示
 QList<int> get_plug_allocated_nodes(int plugId)
 {
     QList<int> allocatedNodes;
@@ -57,6 +65,15 @@ QList<int> get_plug_allocated_nodes(int plugId)
         allocatedNodes.append(result->PolicyTargetdPowerNode[i]);
     }
     return allocatedNodes;
+}
+
+void clear_publish_outcomes(int plugId)
+{
+    if (plugId < 1 || plugId > MAXNODES_MEM_LMT)
+    {
+        return;
+    }
+    memset(&gtarget_result[plugId - 1], 0, sizeof(St_PolicyTargetResult));
 }
 
 #endif

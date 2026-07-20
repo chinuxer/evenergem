@@ -12,9 +12,10 @@ TopologySelectDialog::TopologySelectDialog(QWidget *parent)
     setMinimumSize(600, 200);
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-
+    QString lightBlueStyle = "color: rgb(102, 153, 255);";
     QLabel *label = new QLabel("请选择功率模块的拓扑结构：", this);
     label->setAlignment(Qt::AlignCenter);
+    label->setStyleSheet(lightBlueStyle); // 设置为浅蓝色
     mainLayout->addWidget(label);
 
     QHBoxLayout *buttonLayout = new QHBoxLayout;
@@ -23,6 +24,10 @@ TopologySelectDialog::TopologySelectDialog(QWidget *parent)
     QRadioButton *fullMatrixBtn = new QRadioButton("全矩阵结构", this);
     QRadioButton *ringBtn = new QRadioButton("环形结构", this);
     QRadioButton *hybridBtn = new QRadioButton("半矩阵半环形", this);
+
+       fullMatrixBtn->setStyleSheet(lightBlueStyle);
+    ringBtn->setStyleSheet(lightBlueStyle);
+    hybridBtn->setStyleSheet(lightBlueStyle);
 
     fullMatrixBtn->setChecked(true); // 默认选中
 
