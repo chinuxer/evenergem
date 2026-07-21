@@ -1,9 +1,6 @@
 #ifndef PAUTOPOLOG_H
 #define PAUTOPOLOG_H
-// #ifdef __cplusplus
-// extern "C"
-//{
-// #endif
+
 #include "pau_broker.h"
 #include "pau_vector.h"
 
@@ -26,7 +23,5 @@ typedef struct Edge
 Contactor_Edge get_Edge(int index);
 int find(int x);
 void unite(int x, int y);
-// #ifdef __cplusplus
-// }
-// #endif // __cplusplus
+
 #endif // PAUTOPOLOG_H

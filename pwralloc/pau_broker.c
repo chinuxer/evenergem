@@ -60,7 +60,7 @@ static size_t factorial(ID_TYPE n)
 {
     size_t res = 0;
 
-    for (int i = 1; i <= n; i++)
+    for (size_t i = 1; i <= n; i++)
     {
         res += i;
     }
@@ -227,7 +227,9 @@ static void *create_FlexStruct_Array(size_t header_size, size_t element_size, si
     }
     // 元编程模版告知IAR编译器需要调用的函数地址，优化时尽量最近,跳转调用
 #define CONTEXT_EXPANDER_PROJ_GLOBAL(x) Alloc_##x##Array_Init,
+#if defined(__IAR_SYSTEMS_ICC__)
 #pragma calls = VARIABLE_LIST_PENDING_EXPANDED
+#endif
     init_func(ptr, count);
     return ptr;
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
@@ -367,6 +369,15 @@ size_t get_node_module_cnt(ID_TYPE nodeid)
         return -1;
     }
     return refer_Node_Extracted(nodeid)->moudle_box.size;
+}
+size_t get_allover_modules_cnt(void)
+{
+    size_t ret = 0;
+    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
+    {
+        ret += get_node_module_cnt(nodeid);
+    }
+    return ret;
 }
 size_t get_plug_allocated_cnt(ID_TYPE plugid)
 {

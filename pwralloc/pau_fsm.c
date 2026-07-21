@@ -76,7 +76,7 @@ void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
     fillout_Outcomes(chargeeID, map, outcome);
 }
 
-static void handle_init_cmd(void)
+static void handle_init_cmd(va_list *args)
 {
     bool database_building(TOPOTYPE, size_t, size_t);
     int oprt_ratedpwr_per_module(int);

@@ -1,9 +1,6 @@
 #ifndef PAU_VECTOR_H
 #define PAU_VECTOR_H
-// #ifdef __cplusplus
-// extern "C"
-//{
-// #endif
+
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -98,7 +95,5 @@ int pau_vector_contains_ex(PAU_Vector *vec, const void *target, PAU_VectorCompar
 #define PAU_VECTOR_FOREACH(val, vec)                      \
     for (size_t index = 1; index <= (vec)->size; index++) \
         for (size_t val = 1; (val > 0) && (val = (vec)->data[index]) > 0; val = 0)
-// #ifdef __cplusplus
-// }
-// #endif // __cplusplus
+
 #endif // PAU_VECTOR_H

@@ -60,6 +60,7 @@ bool hear_Canaries_Twittering(void);
 
 PRIOR get_node_priority(ID_TYPE nodeid);
 size_t get_node_module_cnt(ID_TYPE nodeid);
+size_t get_allover_modules_cnt(void);
 ID_TYPE get_node_chargingplugid(ID_TYPE node);
 int get_node_available_power(ID_TYPE nodeid);
 NodeState get_node_state(ID_TYPE nodeid);

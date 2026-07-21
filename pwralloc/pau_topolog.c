@@ -458,10 +458,10 @@ static void pullout_further_nodes(ID_TYPE nodeid)
         int hops_allocated_nodeid = get_hops_occupied(pplug->connectedNode, allocated_nodeid, pplug->id);
         hops_refresh(nodeid, pnode->plug_id);
         int distance_to_nodeid = get_hops_occupied(nodeid, allocated_nodeid, pnode->plug_id);
-        void dist_print(void);
-        void lock_print(void);
-        dist_print();
-        lock_print();
+        // void dist_print(void);
+        // void lock_print(void);
+        // dist_print();
+        // lock_print();
         hops_refresh(pplug->connectedNode, pnode->plug_id);
         if ((hops_allocated_nodeid - hops_compared) == distance_to_nodeid) // 如果节点所属桩已分配的节点到当前移除节点的跳数等于各自到基直连节点的差值
         {
@@ -494,7 +494,7 @@ static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t qu
     for (int nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
     {
         size_t score = makeScore(SENARIO_ACQUIRE, quota, plugid, 1, nodeid, 1);
-        pau_printf("[%02d]%d \n", nodeid, score);
+        pau_printf("[%02d]%d \r\n", nodeid, score);
         // 遍历节点的每个邻居节点
         pau_vector_set(scorelist, nodeid, score);
     }
@@ -566,14 +566,15 @@ static bool node_common_operate(ID_TYPE plugid, bool opType)
     {
         return true;
     }
-    if (NODES_MAX_ENCIRCLE < quota)
-    {
-        return false;
-    }
+    size_t quota_limit = get_allover_modules_cnt();
     size_t cnt = 0;
+    if (quota_limit < quota)
+    {
+        quota = quota_limit;
+    }
 
     dual_endings_bfs_shell(pplug->connectedNode, plugid, !opType);
-    while (cnt < NODES_MAX_ENCIRCLE)
+    while (cnt < quota_limit)
     {
         int optimal_node = (opType == NODE_OP_DISPENSE)
                                ? find_euelect_node_near(plugid, pplug->connectedNode, quota)

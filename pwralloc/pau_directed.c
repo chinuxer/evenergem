@@ -67,21 +67,43 @@ void build_graph(void)
     }
 }
 
-/* 从 start 出发跑一次 BFS，只计算到 locked==plugid 的点的距离 */
+static int is_edge_available(int u, int v)
+{
+    // 遍历线环内的所有接触器（环形 + 对角线）
+    for (int c = 1; c <= 2 * NODES_MAX_ENCIRCLE; ++c)
+    {
+        struct Alloc_contactorObj *pcont = refer_Contactor_Extracted(c);
+        if (pcont && pcont->isClosed)
+        {
+            if ((pcont->node1 == u && pcont->node2 == v) ||
+                (pcont->node1 == v && pcont->node2 == u))
+            {
+                return 1; // 存在闭合接触器
+            }
+        }
+    }
+    return 0; // 无可用路径
+}
 void bfs(ID_TYPE start, ID_TYPE plugid, bool find_type)
 {
     memset(pconfig_graph->dist, -1, sizeof(pconfig_graph->dist));
     pconfig_graph->qh = pconfig_graph->qt = 0;
     pconfig_graph->dist[start] = 0;
     pconfig_graph->q[pconfig_graph->qt++] = start;
+
     while (pconfig_graph->qh < pconfig_graph->qt)
     {
         int u = pconfig_graph->q[pconfig_graph->qh++];
         for (int e = pconfig_graph->head[u]; e; e = pconfig_graph->nxt[e])
         {
             int v = pconfig_graph->to[e];
+            if (find_type && !is_edge_available(u, v))
+            {
+                continue;
+            }
             if ((!find_type && pconfig_graph->locked[v] > 0 && pconfig_graph->locked[v] != plugid) || (find_type && pconfig_graph->locked[v] != plugid))
                 continue;
+
             if (pconfig_graph->dist[v] == -1)
             {
                 pconfig_graph->dist[v] = pconfig_graph->dist[u] + 1;
