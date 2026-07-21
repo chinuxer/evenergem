@@ -1588,8 +1588,6 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
             pile.requiredNodes = (requiredPower + cfg.unitPower - 1) / cfg.unitPower;
             pile.pau_data->priority = (PRIOR)priority;
             pile.pau_data->state = (requiredPower > 0) ? PLUG_CHARGING : PLUG_IDLE;
-            // 清理 disabledNodes（外部状态没有禁用概念，清空）
-            pau_vector_clear(pile.pau_data->disabledNodes);
         }
     }
     // 对于未出现在 chargingPiles 中的充电桩，设为空闲
@@ -1602,7 +1600,6 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
             pile.pau_data->requiredPower = 0;
             pile.requiredNodes = 0;
             pile.pau_data->state = PLUG_IDLE;
-            pau_vector_clear(pile.pau_data->disabledNodes);
         }
     }
 

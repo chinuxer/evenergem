@@ -307,21 +307,6 @@ void updateContactorStates(ID_TYPE plugid, ID_TYPE nodeid)
         return;
     }
 
-    if (pplug->state == PLUG_IDLE && pau_vector_size(pplug->disabledNodes) > 0)
-    {
-        PAU_VECTOR_FOREACH(disabled_nodeid, pplug->disabledNodes)
-        {
-            // 遍历contactor数组，找到连接disabled_nodeid的接触器，断开接触器
-            for (size_t i = 1; i <= CONTACTOR_MAX; i++)
-            {
-                struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(i);
-                if ((pcontactor->node1 == disabled_nodeid) || pcontactor->node2 == disabled_nodeid)
-                {
-                    pcontactor->isClosed = false;
-                }
-            }
-        }
-    }
     // 如果nodeid > 0 断开该nodeid有关联的接触器
     if (nodeid > ID_VAIN)
     {
@@ -370,10 +355,7 @@ static void pull_NodefromPlug(ID_TYPE nodeid, ID_TYPE plugid)
     {
         pnode->state = NODE_IDLE;
     }
-    if (pnode->state == NODE_DISABLED)
-    {
-        pau_vector_remove(pplug->disabledNodes, nodeid);
-    }
+
     if (0 == pau_vector_size(pplug->allocatedNodes))
     {
         pplug->state = PLUG_IDLE;
@@ -403,10 +385,7 @@ static void push_NodetoPlug(ID_TYPE nodeid, ID_TYPE plugid)
     {
         pnode->state = NODE_OCCUPIED;
     }
-    if (pnode->state == NODE_DISABLED)
-    {
-        pau_vector_append(pplug->disabledNodes, nodeid);
-    }
+
     updateContactorStates(plugid, 0);
 }
 static void pullout_matrices_related(ID_TYPE victim_plugid)
@@ -790,7 +769,7 @@ static bool matrix_node_avatar(ID_TYPE plugid)
         //  refer_Plug_Extracted(plugid)->refresh = true;
         //
 
-        found = true;
+        found = false;
     }
     pau_vector_destroy(scorelist);
     return found;
@@ -931,16 +910,15 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
     int shortage = pplug->shortage;
     for (int guard = 0; pplug->shortage > 0; guard++)
     {
-        if (!node_common_operate(plugid, NODE_OP_DISPENSE))
+        bool res = node_common_operate(plugid, NODE_OP_DISPENSE);
+        if (!res)
         {
-            bool res = node_extra_operate(plugid, NODE_OP_DISPENSE);
-            update_plug_shortage_power(plugid);
-            return res;
+            res = node_extra_operate(plugid, NODE_OP_DISPENSE);
         }
         update_plug_shortage_power(plugid);
         if (guard > shortage)
         {
-            break;
+            return res;
         }
     }
     return true;
@@ -969,7 +947,7 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
         {
             pull_NodefromPlug(allocated_nodeid, plugid);
         }
-        pau_vector_clear(pplug->disabledNodes);
+
         pau_vector_clear(pplug->allocatedNodes);
         pau_vector_destroy(allocatedNodes_copy);
         transferPower(plugid);
@@ -1003,19 +981,50 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
     transferPower(plugid);
     return res;
 }
-void excircle_flowDirectioned(ID_TYPE plugid, FlowMap *object)
+static inline int flowmap_cmp(const FlowMap *a, const FlowMap *b)
+{
+    return (a->hops > b->hops) - (a->hops < b->hops);
+}
+
+// hops排序函数
+void sort_flowmap_by_hops(FlowMap *map, size_t n)
+{
+    if (NULL == map || 0 == n)
+    {
+        return;
+    }
+    for (size_t i = 0; i < n - 1; i++)
+    {
+        size_t min_idx = i;
+        for (size_t j = i + 1; j < n; j++)
+        {
+            if (flowmap_cmp(&map[j], &map[min_idx]) < 0)
+            {
+                min_idx = j;
+            }
+        }
+        if (min_idx != i)
+        {
+            FlowMap temp = map[i];
+            map[i] = map[min_idx];
+            map[min_idx] = temp;
+        }
+    }
+}
+void excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
 {
     if (!ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
     {
         return;
     }
-    if (!ASSERT_PLUG_ID(plugid) || NULL == object)
+    if (!ASSERT_PLUG_ID(plugid) || NULL == pobject)
     {
         return;
     }
     PAU_Vector *avatar_collcection = pau_vector_create(NODES_MAX_ENCIRCLE / 2);
     collect_avatar_nodes(avatar_collcection, plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+
     for (size_t c = 2 * NODES_MAX_ENCIRCLE + 1; c <= CONTACTOR_MAX; c++)
     {
         struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
@@ -1045,50 +1054,52 @@ void excircle_flowDirectioned(ID_TYPE plugid, FlowMap *object)
         {
             continue;
         }
-        object->contactorid = c;
+        pobject->contactorid = c;
         if (pcontactor->node2 < CONTACTOR_SPLICE_MULTIPLE)
         {
             if (pau_vector_contains(avatar_collcection, pcontactor->node1))
             {
-                object->direction = pcontactor->node2;
+                pobject->direction = pcontactor->node2;
             }
             if (pau_vector_contains(avatar_collcection, pcontactor->node2))
             {
-                object->direction = pcontactor->node1;
+                pobject->direction = pcontactor->node1;
             }
         }
         else
         {
-            object->direction = pcontactor->node1;
+            pobject->direction = pcontactor->node1;
             ID_TYPE nodeid_alpha = pcontactor->node2 / CONTACTOR_SPLICE_MULTIPLE;
             ID_TYPE nodeid_beta = pcontactor->node2 % CONTACTOR_SPLICE_MULTIPLE;
             if (pau_vector_contains(pplug->allocatedNodes, nodeid_alpha) && !pau_vector_contains(pplug->allocatedNodes, nodeid_beta))
             {
-                object->appendix = nodeid_alpha;
+                pobject->appendix = nodeid_alpha;
             }
             else if (!pau_vector_contains(pplug->allocatedNodes, nodeid_alpha) && pau_vector_contains(pplug->allocatedNodes, nodeid_beta))
             {
-                object->appendix = nodeid_beta;
+                pobject->appendix = nodeid_beta;
             }
             else
             {
-                object->appendix = nodeid_alpha;
+                pobject->appendix = nodeid_alpha;
             }
         }
-        object += 1;
+        pobject += 1;
     }
     pau_vector_destroy(avatar_collcection);
 }
 
-FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *object)
+FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
 {
-    if (!ASSERT_PLUG_ID(plugid) || NULL == object)
+    if (!ASSERT_PLUG_ID(plugid) || NULL == pobject)
     {
         return NULL;
     }
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     size_t cnt = pau_vector_size(pplug->allocatedNodes);
     hops_refresh(pplug->connectedNode, plugid);
+
+    size_t index_map = 0;
     for (size_t c = 1; c <= 3 * NODES_MAX_ENCIRCLE / 2; c++)
     {
         struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
@@ -1105,30 +1116,34 @@ FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *object)
             continue;
         }
 
-        object->contactorid = c;
+        (pobject + index_map)->contactorid = c;
         int hops_node1 = get_hops_occupied(pplug->connectedNode, pcontactor->node1, plugid);
         int hops_node2 = get_hops_occupied(pplug->connectedNode, pcontactor->node2, plugid);
-        object->direction = hops_node1 > hops_node2 ? pcontactor->node1 : pcontactor->node2;
+        (pobject + index_map)->direction = hops_node1 > hops_node2 ? pcontactor->node1 : pcontactor->node2;
+        (pobject + index_map)->hops = hops_node1 > hops_node2 ? hops_node1 : hops_node2;
         if (c > NODES_MAX_ENCIRCLE)
         {
             if (refer_Contactor_Extracted(c + NODES_MAX_ENCIRCLE / 2)->isClosed)
             {
-                object->appendix = c + NODES_MAX_ENCIRCLE / 2;
+                (pobject + index_map)->appendix = c + NODES_MAX_ENCIRCLE / 2;
             }
             else
             {
-                object->contactorid = 0;
-                object->direction = 0;
-                object->appendix = 0;
-                object -= 1;
+                (pobject + index_map)->contactorid = 0;
+                (pobject + index_map)->direction = 0;
+                (pobject + index_map)->appendix = 0;
+                index_map -= 1;
             }
         }
 
-        object += 1;
-        if (0 == --cnt)
+        index_map += 1;
+        if (0 == --cnt || index_map >= MAXNODES_MEM_LMT)
         {
             break;
         }
     }
-    return object;
+
+    // 把map中的FlowMap元素按照.hops从小到大排序
+    sort_flowmap_by_hops(pobject, index_map);
+    return pobject + index_map;
 }

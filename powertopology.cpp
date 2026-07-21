@@ -80,18 +80,18 @@ QVector<QColor> SimpleTopology::generateColors(int count)
 
     // 手工精选12种完全差异化基础色，无相近绿色、无相近红色
     static const QColor distinct12[] = {
-        QColor(220, 0, 0),    // 1 正红
-        QColor(0, 70, 0),     // 2 深草绿
-        QColor(255, 210, 0),  // 3 金黄
+        QColor(220, 0, 0),     // 1 正红
+        QColor(0, 70, 0),      // 2 深草绿
+        QColor(255, 210, 0),   // 3 金黄
         QColor(00, 140, 220),  // 4 深蓝
-        QColor(255, 100, 0),  // 5 橙
-        QColor(150, 0, 160),  // 6 深紫
-        QColor(0, 180, 180),  // 7 青蓝
+        QColor(255, 100, 0),   // 5 橙
+        QColor(150, 0, 160),   // 6 深紫
+        QColor(0, 180, 180),   // 7 青蓝
         QColor(200, 100, 180), // 8 洋红
-        QColor(160, 200, 0),  // 9 黄绿（和2号深绿明显区分）
-        QColor(80, 40, 180),  // 10 靛蓝
-        QColor(200, 120, 60), // 11 棕橙
-        QColor(60, 200, 140)  // 12 薄荷绿（和2、9绿色完全不相似）
+        QColor(160, 200, 0),   // 9 黄绿（和2号深绿明显区分）
+        QColor(80, 40, 180),   // 10 靛蓝
+        QColor(200, 120, 60),  // 11 棕橙
+        QColor(60, 200, 140)   // 12 薄荷绿（和2、9绿色完全不相似）
     };
     const int fixedCount = sizeof(distinct12) / sizeof(distinct12[0]);
 
@@ -143,9 +143,10 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
         return false;
     }
     requiredPower += m_piles[pileId - 1].pau_data->requiredPower;
-    ::requestPower(pileId, requiredPower);
+    bool retval = ::requestPower(pileId, requiredPower);
     linkage_publisher(pileId);
     emit topologyChanged();
+    return retval;
 }
 
 void SimpleTopology::releasePower(int pileId, int powerToRelease)

@@ -1,4 +1,4 @@
-#ifndef PAUBROKER_H,
+#ifndef PAUBROKER_H
 #define PAUBROKER_H
 #ifdef __cplusplus
 extern "C"
@@ -117,7 +117,6 @@ void pau_log_printf(const char *fmt, ...);
         bool refresh;
         size_t hysteresisCnt;       // 功率回差迟滞计数器
         PAU_Vector *allocatedNodes; // 已分配的节点
-        PAU_Vector *disabledNodes;  // 禁用的节点(在已分配列表中 但并不计入节点数)
     };
 
     struct Alloc_contactorObj
@@ -149,7 +148,8 @@ void pau_log_printf(const char *fmt, ...);
     {
         uint32_t front_canary; // absolutely required to be top element
         size_t length;
-        struct Alloc_plugObj obj_array[]; // __attribute__((counted_by(length)));
+        PAU_Vector *dissabledNodes_Collection; // 已失效的节点
+        struct Alloc_plugObj obj_array[];      // __attribute__((counted_by(length)));
     } Alloc_PlugsArray;
 
     typedef struct
@@ -162,7 +162,6 @@ void pau_log_printf(const char *fmt, ...);
     {
         uint32_t front_canary; // absolutely required to be top element
         size_t length;
-
         struct Tactic_ReqCurrentObj obj_array[]; // __attribute__((counted_by(length)));
     } Alloc_ReqSettlerArray;
 #define VARIABLE_LIST_PENDING_EXPANDED       \

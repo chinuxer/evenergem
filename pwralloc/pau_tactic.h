@@ -26,7 +26,7 @@ enum Senario
 };
 typedef struct
 {
-    ID_TYPE contactorid, direction, appendix;
+    ID_TYPE contactorid, direction, appendix, hops;
 } FlowMap;
 
 typedef struct

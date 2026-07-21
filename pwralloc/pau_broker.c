@@ -99,6 +99,7 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
     Alloc_PlugsArray *p = (Alloc_PlugsArray *)ptr;
     p->length = n;
     p->front_canary = FRONT_MAGICWORD;
+    p->dissabledNodes_Collection = (PAU_Vector *)pau_calloc(sizeof(PAU_Vector) + (PAU_VECTOR_DEFAULT_CAPACITY + 1) * sizeof(size_t), __func__);
     for (ID_TYPE i = 1; i <= n; i++)
     {
         p->obj_array[i].priority = PRIOR_VAIN;
@@ -120,12 +121,6 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
         {
             p->obj_array[i].allocatedNodes->data[0] = PAU_VECTOR_DEFAULT_CAPACITY;
             pau_vector_clear(p->obj_array[i].allocatedNodes);
-        }
-        p->obj_array[i].disabledNodes = (PAU_Vector *)pau_calloc(sizeof(PAU_Vector) + (PAU_VECTOR_DEFAULT_CAPACITY + 1) * sizeof(size_t), __func__);
-        if (NULL != p->obj_array[i].disabledNodes)
-        {
-            p->obj_array[i].disabledNodes->data[0] = PAU_VECTOR_DEFAULT_CAPACITY;
-            pau_vector_clear(p->obj_array[i].disabledNodes);
         }
     }
 
@@ -360,7 +355,8 @@ size_t get_plug_chargingnodes_cnt(ID_TYPE plugid)
         return -1;
     }
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    size_t num = pau_vector_size(pplug->allocatedNodes) - pau_vector_size(pplug->disabledNodes);
+    size_t num = pau_vector_size(pplug->allocatedNodes);
+    // 去除disable的节点
     num = num > 0 ? num : 0;
     return num;
 }
