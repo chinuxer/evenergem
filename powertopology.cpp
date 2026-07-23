@@ -1,10 +1,13 @@
 #include "powertopology.h"
 #include <QDebug>
 #include <QColor>
+#include <QMessageBox>
 #include <cmath>
 #include <QJsonDocument>
 #include <QFile>
 #include <cstdio>
+#include <QApplication>
+
 #define __IMPORT_DATAFEEDER__
 #include "pau_feeder.h"
 
@@ -27,6 +30,7 @@ void SimpleTopology::initialize(const TopologyConfig &config)
     {
         PowerNode node;
         node.id = i;
+        node.disabled_recover = false;
         node.pau_data = refer_Node_Extracted(i); // 关联到底层数据
         m_nodes.append(node);
     }
@@ -142,6 +146,14 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
         qWarning() << "无效的功率请求:" << requiredPower;
         return false;
     }
+    if (!::hear_Canaries_Twittering())
+    {
+        QMessageBox::warning(
+            nullptr,
+            QStringLiteral("禁止操作"),
+            QStringLiteral("数据库已损坏，无法继续分配"));
+        return false;
+    }
     requiredPower += m_piles[pileId - 1].pau_data->requiredPower;
     bool retval = ::requestPower(pileId, requiredPower);
     linkage_publisher(pileId);
@@ -156,6 +168,14 @@ void SimpleTopology::releasePower(int pileId, int powerToRelease)
         qWarning() << "无效的充电桩ID:" << pileId;
         return;
     }
+    if (!::hear_Canaries_Twittering())
+    {
+        QMessageBox::warning(
+            nullptr,
+            QStringLiteral("禁止操作"),
+            QStringLiteral("数据库已损坏，无法继续分配"));
+        return;
+    }
     int releasedpower = m_piles[pileId - 1].pau_data->requiredPower - powerToRelease;
     if (releasedpower < 0)
     {
@@ -163,6 +183,23 @@ void SimpleTopology::releasePower(int pileId, int powerToRelease)
     }
     ::releasePower(pileId, releasedpower);
     linkage_publisher(pileId);
+    for (int nodeId = 1; nodeId <= m_nodes.size(); nodeId++)
+    {
+        if (ID_VAIN == m_nodes[nodeId - 1].pau_data->plug_id && m_nodes[nodeId - 1].disabled_recover)
+        {
+            m_nodes[nodeId - 1].disabled_recover = false;
+        }
+    }
+    if (SemiHybrid == m_config.topotype)
+    {
+        for (int nodeId = 1; nodeId <= m_matrixnodes.size(); nodeId++)
+        {
+            if (ID_VAIN == m_matrixnodes[nodeId - 1].pau_data->plug_id && m_matrixnodes[nodeId - 1].disabled_recover)
+            {
+                m_matrixnodes[nodeId - 1].disabled_recover = false;
+            }
+        }
+    }
     emit topologyChanged();
 }
 
@@ -256,13 +293,67 @@ void SimpleTopology::stopCharging(int pileId)
 
 bool SimpleTopology::toggleNodeEnabled(int nodeId)
 {
-    if (nodeId < 1 || nodeId > m_nodes.size())
+    if (nodeId < 1)
     {
         qWarning() << "无效的节点ID:" << nodeId;
         return false;
     }
 
-    return true;
+    PowerNode *nodePtr = nullptr;
+    int nodeTotal = 0;
+
+    // 根据拓扑类型定位节点指针
+    if (SemiHybrid == m_config.topotype)
+    {
+        nodeTotal = m_nodes.size() * 3 / 2;          // 线环 + 矩阵总节点数
+        int matrixIdx = nodeId - m_nodes.size() - 1; // 转换为矩阵节点下标
+        if (matrixIdx < 0 || matrixIdx >= m_matrixnodes.size())
+        {
+            qWarning() << "矩阵节点ID超出范围:" << nodeId;
+            return false;
+        }
+        nodePtr = &m_matrixnodes[matrixIdx];
+    }
+    else
+    {
+        nodeTotal = m_nodes.size();
+        int nodeIdx = nodeId - 1;
+        if (nodeIdx < 0 || nodeIdx >= m_nodes.size())
+        {
+            qWarning() << "线环节点ID超出范围:" << nodeId;
+            return false;
+        }
+        nodePtr = &m_nodes[nodeIdx];
+    }
+
+    if (nodeId > nodeTotal)
+    {
+        qWarning() << "节点ID超过总节点数:" << nodeId;
+        return false;
+    }
+
+    // 操作前记录恢复标志（若节点已处于离线状态）
+    if (nodePtr->pau_data->state == NODE_OUTORDER)
+    {
+        nodePtr->disabled_recover = true;
+    }
+
+    // 调用底层 C 接口切换节点可用性
+    bool res = ::set_node_availability(nodeId);
+
+    // 若操作后仍处于离线状态，清除恢复标志
+    if (nodePtr->pau_data->state == NODE_OUTORDER)
+    {
+        nodePtr->disabled_recover = false;
+    }
+
+    if (!res && nodePtr->pau_data->state == NODE_OUTORDER)
+    {
+        linkage_publisher(nodePtr->pau_data->plug_id);
+    }
+
+    emit topologyChanged();
+    return res;
 }
 
 void SimpleTopology::linkage_publisher(int plugid)
@@ -272,7 +363,7 @@ void SimpleTopology::linkage_publisher(int plugid)
         qWarning() << "无效的充电桩ID:" << plugid;
         return;
     }
-
+    m_piles[plugid - 1].pau_data->refresh = true;
     // 遍历每个充电桩refresh是否为真
     for (int i = 0; i < m_piles.size(); i++)
     {
@@ -282,6 +373,6 @@ void SimpleTopology::linkage_publisher(int plugid)
             m_piles[i].pau_data->refresh = false;
         }
     }
-    ::publish_Outcomes(plugid, gtarget_result + plugid - 1);
+
     return;
 }

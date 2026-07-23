@@ -40,9 +40,10 @@ extern "C"
     } PRIOR;
     typedef enum
     {
-        NODE_IDLE = 0,
-        NODE_OCCUPIED,
-        NODE_DISABLED // 节点不可用
+        NODE_IDLEFREE = 0, // plugid ×  available √
+        NODE_OCCUPIED,     // plugid √  available √
+        NODE_DISABLED,     // plugid ×  available ×
+        NODE_OUTORDER,     // plugid √  available ×
     } NodeState;
 
     // 充电桩状态
@@ -148,8 +149,7 @@ void pau_log_printf(const char *fmt, ...);
     {
         uint32_t front_canary; // absolutely required to be top element
         size_t length;
-        PAU_Vector *dissabledNodes_Collection; // 已失效的节点
-        struct Alloc_plugObj obj_array[];      // __attribute__((counted_by(length)));
+        struct Alloc_plugObj obj_array[]; // __attribute__((counted_by(length)));
     } Alloc_PlugsArray;
 
     typedef struct

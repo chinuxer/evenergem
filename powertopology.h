@@ -16,6 +16,7 @@
 struct PowerNode
 {
     int id; // 节点ID (1-n)
+    bool disabled_recover;
     struct Alloc_nodeObj *pau_data;
     QPointF position; // 图形位置
 };

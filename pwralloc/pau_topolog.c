@@ -340,7 +340,7 @@ static void pull_NodefromPlug(ID_TYPE nodeid, ID_TYPE plugid)
 
     struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
 
-    if (pnode->state == NODE_IDLE || pnode->plug_id != plugid)
+    if (pnode->plug_id != plugid)
     {
         return;
     }
@@ -353,7 +353,11 @@ static void pull_NodefromPlug(ID_TYPE nodeid, ID_TYPE plugid)
     pau_printf(" release node %d from plug %d\r\n", nodeid, plugid);
     if (pnode->state == NODE_OCCUPIED)
     {
-        pnode->state = NODE_IDLE;
+        pnode->state = NODE_IDLEFREE;
+    }
+    if (pnode->state == NODE_OUTORDER)
+    {
+        pnode->state = NODE_DISABLED;
     }
 
     if (0 == pau_vector_size(pplug->allocatedNodes))
@@ -370,7 +374,7 @@ static void push_NodetoPlug(ID_TYPE nodeid, ID_TYPE plugid)
         return;
     }
     struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-    if (pnode->state == NODE_OCCUPIED)
+    if (pnode->plug_id != ID_VAIN)
     {
         return;
     }
@@ -381,9 +385,13 @@ static void push_NodetoPlug(ID_TYPE nodeid, ID_TYPE plugid)
     pnode->priority = pplug->priority;
     pau_vector_append(pplug->allocatedNodes, nodeid);
     pau_printf(" allocate node %d to plug %d\r\n", nodeid, plugid);
-    if (pnode->state == NODE_IDLE)
+    if (pnode->state == NODE_IDLEFREE)
     {
         pnode->state = NODE_OCCUPIED;
+    }
+    if (pnode->state == NODE_DISABLED)
+    {
+        pnode->state = NODE_OUTORDER;
     }
 
     updateContactorStates(plugid, 0);
@@ -435,7 +443,7 @@ static void pullout_further_nodes(ID_TYPE nodeid)
     }
 
     struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-    if (pnode->state != NODE_OCCUPIED || pnode->plug_id == ID_VAIN)
+    if (pnode->plug_id == ID_VAIN)
     {
         return;
     }
@@ -586,10 +594,10 @@ static bool node_common_operate(ID_TYPE plugid, bool opType)
         }
         struct Alloc_nodeObj *poptimal_node = refer_Node_Extracted(optimal_node);
 
-        NodeState critia = (opType == NODE_OP_DISPENSE) ? NODE_IDLE : NODE_OCCUPIED;
+        ID_TYPE critia = (opType == NODE_OP_DISPENSE) ? ID_VAIN : pplug->id;
         void (*func)(ID_TYPE, ID_TYPE) = (opType == NODE_OP_DISPENSE) ? push_NodetoPlug : pull_NodefromPlug;
 
-        if (poptimal_node->state != critia)
+        if (poptimal_node->plug_id != critia)
         {
             continue;
         }
@@ -628,7 +636,7 @@ static bool idlenodes_donatio(ID_TYPE plugid)
     for (ID_TYPE nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
     {
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->plug_id == ID_VAIN && pnode->state == NODE_IDLE && !isConnectedNode(nodeid))
+        if (pnode->plug_id == ID_VAIN && pnode->state == NODE_IDLEFREE && !isConnectedNode(nodeid))
         {
             pau_vector_append(idlenode_list, nodeid);
         }
@@ -636,7 +644,7 @@ static bool idlenodes_donatio(ID_TYPE plugid)
     for (ID_TYPE nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
     {
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->plug_id == ID_VAIN && pnode->state == NODE_IDLE && isConnectedNode(nodeid))
+        if (pnode->plug_id == ID_VAIN && !pau_vector_contains(idlenode_list, nodeid))
         {
             pau_vector_append(idlenode_list, nodeid);
         }
@@ -779,7 +787,7 @@ static bool matrix_node_avatar(ID_TYPE plugid)
 static void cutoff_root_node(struct Alloc_plugObj *pplug,
                              struct Alloc_nodeObj *pnode)
 {
-    if (pplug->state != PLUG_IDLE || pnode->state != NODE_OCCUPIED || pnode->plug_id <= ID_VAIN)
+    if (pplug->state != PLUG_IDLE || pnode->plug_id <= ID_VAIN)
     {
         return;
     }
@@ -1147,4 +1155,44 @@ FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
     // 把map中的FlowMap元素按照.hops从小到大排序
     sort_flowmap_by_hops(pobject, index_map);
     return pobject + index_map;
+}
+
+bool set_node_availability(ID_TYPE node_id)
+{
+    if (!ASSERT_NODE_ID(node_id) && SemiHybrid == TOPOLOGY_TYPE)
+    {
+        return false;
+    }
+    if (!ASSERT_NODE_ID_ENCIRCLE(node_id) && CakraWheel == TOPOLOGY_TYPE)
+    {
+        return false;
+    }
+    struct Alloc_nodeObj *pnode = refer_Node_Extracted(node_id);
+    bool res = false;
+    if (NODE_DISABLED == pnode->state)
+    {
+        pnode->state = NODE_IDLEFREE;
+        res = true;
+    }
+    else if (NODE_IDLEFREE == pnode->state)
+    {
+        pnode->state = NODE_DISABLED;
+        res = false;
+    }
+    else if (NODE_OUTORDER == pnode->state)
+    {
+        pnode->state = NODE_OCCUPIED;
+        res = true;
+    }
+    else if (NODE_OCCUPIED == pnode->state)
+    {
+        pnode->state = NODE_OUTORDER;
+        if (ASSERT_PLUG_ID(pnode->plug_id))
+        {
+            int requiredPower = refer_Plug_Extracted(pnode->plug_id)->requiredPower;
+            (void)requestPower(pnode->plug_id, requiredPower);
+        }
+        res = false;
+    }
+    return res;
 }

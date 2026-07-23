@@ -81,7 +81,7 @@ static void Alloc_NodesArray_Init(void *const ptr, size_t n)
     for (ID_TYPE i = 1; i <= n; i++)
     {
         p->obj_array[i].id = i;
-        p->obj_array[i].state = NODE_IDLE;
+        p->obj_array[i].state = NODE_IDLEFREE;
         p->obj_array[i].priority = PRIOR_VAIN;
         p->obj_array[i].plug_id = ID_VAIN;
         modulesPerNode_Init(&p->obj_array[i]);
@@ -99,7 +99,6 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
     Alloc_PlugsArray *p = (Alloc_PlugsArray *)ptr;
     p->length = n;
     p->front_canary = FRONT_MAGICWORD;
-    p->dissabledNodes_Collection = (PAU_Vector *)pau_calloc(sizeof(PAU_Vector) + (PAU_VECTOR_DEFAULT_CAPACITY + 1) * sizeof(size_t), __func__);
     for (ID_TYPE i = 1; i <= n; i++)
     {
         p->obj_array[i].priority = PRIOR_VAIN;
@@ -420,7 +419,7 @@ size_t get_plug_chargingmodules_cnt(ID_TYPE plugid)
     PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
     {
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->state == NODE_IDLE || pnode->state == NODE_DISABLED)
+        if (pnode->state != NODE_OCCUPIED)
         {
             continue;
         }

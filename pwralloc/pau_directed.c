@@ -10,7 +10,7 @@
  * @history 2026-04-27 YBA40320 创建;2026-05-19 YBA40320 从模拟机移植到A2605线环1500kW工程
  * @details
  *
- *************************************************************************************************************************************************************************/
+ *****************************************************************************/
 #include "pau_vector.h"
 #include "pau_broker.h"
 #include "pau_topolog.h"
@@ -67,7 +67,7 @@ void build_graph(void)
     }
 }
 
-static int is_edge_available(int u, int v)
+static bool is_edge_available(int u, int v)
 {
     // 遍历线环内的所有接触器（环形 + 对角线）
     for (int c = 1; c <= 2 * NODES_MAX_ENCIRCLE; ++c)
@@ -78,11 +78,11 @@ static int is_edge_available(int u, int v)
             if ((pcont->node1 == u && pcont->node2 == v) ||
                 (pcont->node1 == v && pcont->node2 == u))
             {
-                return 1; // 存在闭合接触器
+                return true; // 存在闭合接触器
             }
         }
     }
-    return 0; // 无可用路径
+    return false; // 无可用路径
 }
 void bfs(ID_TYPE start, ID_TYPE plugid, bool find_type)
 {
