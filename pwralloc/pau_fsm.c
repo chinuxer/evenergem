@@ -68,11 +68,6 @@ void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
     FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN, ID_VAIN}};
     FlowMap *pflow_map = encircle_flowDirectioned(chargeeID, map);
     excircle_flowDirectioned(chargeeID, pflow_map);
-    // 打印map
-    // for (int n = 0; n < NODES_MAX_ENCIRCLE; n++)
-    //{
-    //    pau_printf("%d : %02d %02d %02d\r\n", n, map[n].direction, map[n].contactorid, map[n].appendix);
-    //}
     fillout_Outcomes(chargeeID, map, outcome);
 }
 

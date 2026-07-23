@@ -56,7 +56,6 @@ int get_plug_charging_power(ID_TYPE plugid);
 
 bool get_plug_refresh_flag(ID_TYPE plugid);
 void set_plug_refresh_flag(ID_TYPE plugid, bool val);
-bool hear_Canaries_Twittering(void);
 
 PRIOR get_node_priority(ID_TYPE nodeid);
 size_t get_node_module_cnt(ID_TYPE nodeid);

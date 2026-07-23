@@ -11,6 +11,8 @@ extern "C"
     int oprt_ratedpwr_per_module(int);
     bool requestPower(ID_TYPE, int);
     bool releasePower(ID_TYPE, int);
+    bool hear_Canaries_Twittering(void);
+    bool set_node_availability(ID_TYPE node_id);
 }
 #ifdef __IMPORT_DATAFEEDER__
 St_PolicyTargetResult gtarget_result[MAXNODES_MEM_LMT] = {0};

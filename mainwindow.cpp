@@ -31,6 +31,14 @@
 #include <cstddef>
 #include "pau_feeder.h"
 
+static QColor makeDisabledColor(const QColor &base)
+{
+    QColor hsl = base.toHsl();
+    hsl.setHsl(hsl.hslHue(),
+               hsl.hslSaturation() * 0.4,        // 饱和度降 60%
+               qMin(hsl.lightness() + 40, 230)); // 提亮
+    return hsl;
+}
 static size_t factorial(ID_TYPE n)
 {
     size_t res = 0;
@@ -368,12 +376,7 @@ void MainWindow::onApplyConfigClicked()
         QMessageBox::warning(this, "配置错误", "单桩功率必须大于0kW 小于200kW");
         return;
     }
-    ui->nodeListWidget->clear();
-    ui->nodeListWidget->addItem("点击节点选择");
-    for (int i = 1; i <= nodeCount; i++)
-    {
-        ui->nodeListWidget->addItem(QString("节点 %1").arg(i));
-    }
+
     // 确保充电桩数量不超过节点数量
     if (pileCount > nodeCount)
     {
@@ -391,10 +394,18 @@ void MainWindow::onApplyConfigClicked()
     config.unitPower = unitPower;
     config.circleRadius = 200.0;
     config.center = QPointF(300, 300);
+    int nodelist_size = nodeCount;
     if (SemiHybrid == m_topologyType) // 如果是半矩阵半环形
     {
         config.circleRadius = 200.0;
         config.center = QPointF(300, 500);
+        nodelist_size = nodeCount * 3 / 2;
+    }
+    ui->nodeListWidget->clear();
+    ui->nodeListWidget->addItem("点击节点选择");
+    for (int i = 1; i <= nodelist_size; i++)
+    {
+        ui->nodeListWidget->addItem(QString("节点 %1").arg(i));
     }
     (void)::database_building(m_topologyType, nodeCount, pileCount);
     for (int n = 1; n <= pileCount; n++)
@@ -801,7 +812,8 @@ void MainWindow::setupGraphicsScene()
         {
             QGraphicsLineItem *bus = new QGraphicsLineItem(
                 m_matrixNodeItems[i]->x(), m_matrixNodeItems[0]->y() - 2, m_matrixNodeItems[i]->x(), m_matrixNodeItems[i]->y());
-            bus->setPen(QPen(Qt::gray, 3, Qt::SolidLine, Qt::RoundCap));
+            bus->setPen(QPen(Qt::lightGray, 4, Qt::SolidLine, Qt::RoundCap));
+            bus->setZValue(0);
             // 阴影投影线，实现凸起
             QGraphicsLineItem *busShadow = new QGraphicsLineItem(
                 bus->line().x1() + 2, bus->line().y1() + 2,
@@ -810,6 +822,7 @@ void MainWindow::setupGraphicsScene()
             busShadow->setZValue(-1);
             busShadow->setParentItem(bus);
             m_scene->addItem(bus);
+            m_scene->addItem(busShadow);
             m_semiMatrixBusItems[i] = bus;
         }
 
@@ -930,25 +943,32 @@ void MainWindow::updateGraphics()
     {
         const auto &node = nodes[i];
         QBrush brush = Qt::lightGray;
-
-        if (node.pau_data->state == NODE_OCCUPIED && node.pau_data->plug_id > 0)
+        QColor color = Qt::gray;
+        if (node.pau_data->plug_id > 0)
         {
-            // 根据充电桩颜色着色
             int chargerIndex = node.pau_data->plug_id - 1;
             if (chargerIndex >= 0 && chargerIndex < piles.size())
             {
-                brush = piles[chargerIndex].color;
+                color = piles[chargerIndex].color;
+                brush = color;
             }
         }
 
-        else if (node.pau_data->state == NODE_DISABLED)
+        if (NODE_DISABLED == node.pau_data->state || NODE_OUTORDER == node.pau_data->state)
         {
-            brush = QColor(15, 20, 34); // 深灰色
+            color.setAlpha(100);
+            brush = color;
+        }
+        if (node.disabled_recover)
+        {
+            color = makeDisabledColor(color);
+            brush = color;
         }
 
         if (m_nodeItems[i])
         {
             m_nodeItems[i]->setBrush(brush);
+            m_nodeItems[i]->setPen(QPen(color, 1, Qt::SolidLine, Qt::RoundCap));
         }
     }
 
@@ -1157,8 +1177,8 @@ void MainWindow::updateGraphics()
         {
             const auto &node = matrixnodes[i];
             QBrush brush = Qt::lightGray;
-            QColor color;
-            if (node.pau_data->state == NODE_OCCUPIED && node.pau_data->plug_id > 0)
+            QColor color = Qt::gray;
+            if (node.pau_data->plug_id > 0)
             {
                 int chargerIndex = node.pau_data->plug_id - 1;
                 if (chargerIndex >= 0 && chargerIndex < piles.size())
@@ -1166,26 +1186,23 @@ void MainWindow::updateGraphics()
                     color = piles[chargerIndex].color;
                     brush = color;
                 }
-                else
-                {
-                    color = Qt::gray;
-                    brush = Qt::gray;
-                }
             }
-            else if (node.pau_data->state == NODE_DISABLED)
+
+            if (NODE_DISABLED == node.pau_data->state || NODE_OUTORDER == node.pau_data->state)
             {
-                color = QColor(15, 20, 34);
+                color.setAlpha(100);
                 brush = color;
             }
-            else
+            if (node.disabled_recover)
             {
-                color = Qt::gray;
-                brush = Qt::gray;
+                color = makeDisabledColor(color);
+                brush = color;
             }
 
             if (m_matrixNodeItems[i])
             {
                 m_matrixNodeItems[i]->setBrush(brush);
+                m_matrixNodeItems[i]->setPen(QPen(color, 1, Qt::SolidLine, Qt::RoundCap));
             }
 
             if (m_semiMatrixBusItems[i])
@@ -1235,9 +1252,9 @@ void MainWindow::updateStatusDisplay()
     {
         if (node.pau_data->state == NODE_OCCUPIED)
             occupied++;
-        else if (node.pau_data->state == NODE_IDLE)
+        else if (node.pau_data->state == NODE_IDLEFREE)
             idle++;
-        else if (node.pau_data->state == NODE_DISABLED)
+        else if (node.pau_data->state == NODE_DISABLED || node.pau_data->state == NODE_OUTORDER)
             disabled++;
     }
     statusText += QString("占用: %1 | 空闲: %2 | 禁用: %3 | 总数: %4\n")
@@ -1559,7 +1576,8 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
     for (int i = 0; i < cfg.nodeCount; ++i)
     {
         PowerNode &node = const_cast<PowerNode &>(m_topology->getNodes()[i]);
-        node.pau_data->state = NODE_IDLE;
+        node.disabled_recover = false;
+        node.pau_data->state = NODE_IDLEFREE;
         node.pau_data->plug_id = 0;
     }
 

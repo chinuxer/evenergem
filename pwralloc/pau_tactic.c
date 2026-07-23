@@ -74,7 +74,7 @@ void print_outcomes(ID_TYPE plugid)
     {
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(i);
         ID_TYPE pid = 0;
-        if (pnode && pnode->state != NODE_IDLE && pnode->plug_id != ID_VAIN)
+        if (pnode && pnode->plug_id != ID_VAIN)
         {
             pid = pnode->plug_id;
         }
@@ -179,7 +179,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
     {
         bool lower_nodeid_alpha = plug_allocated_contain_node(plugid, nodeid - NODES_MAX_ENCIRCLE);
         bool lower_nodeid_beta = plug_allocated_contain_node(plugid, nodeid - NODES_MAX_ENCIRCLE / 2);
-        score += WEIGHT_5 * (get_node_state(nodeid) == NODE_IDLE ? 1 : 0);
+        score += WEIGHT_5 * (get_node_chargingplugid(nodeid) > ID_VAIN ? 0 : 1);
         score += WEIGHT_4 * lower_nodeid_alpha;
         score += WEIGHT_4 * lower_nodeid_beta;
         if (WEIGHT_4 + WEIGHT_5 <= score)
