@@ -116,6 +116,7 @@ void pau_log_printf(const char *fmt, ...);
         size_t requiredPower;  // 需求功率 (kW)
         int shortage;          // 需求欠额节点数
         bool refresh;
+        bool sequent;
         size_t hysteresisCnt;       // 功率回差迟滞计数器
         PAU_Vector *allocatedNodes; // 已分配的节点
     };
