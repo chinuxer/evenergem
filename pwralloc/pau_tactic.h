@@ -28,7 +28,12 @@ typedef struct
 {
     ID_TYPE contactorid, direction, appendix, hops;
 } FlowMap;
-
+enum METABOLIN
+{
+    METABOLIN_VANISH = 1,
+    METABOLIN_INTACT,
+    METABOLIN_CHANGE
+};
 typedef struct
 {
     unsigned char u8PolicyTargetPowerNodeNum;
@@ -51,11 +56,13 @@ void update_plug_shortage_power(ID_TYPE plugid);
 int get_plug_shortage(ID_TYPE plugid);
 void print_outcomes(ID_TYPE plugid);
 FlowMap *encircle_flowDirectioned(ID_TYPE, FlowMap *);
-void excircle_flowDirectioned(ID_TYPE, FlowMap *);
+int excircle_flowDirectioned(ID_TYPE, FlowMap *, FlowMap *);
 int get_plug_charging_power(ID_TYPE plugid);
 
 bool get_plug_refresh_flag(ID_TYPE plugid);
 void set_plug_refresh_flag(ID_TYPE plugid, bool val);
+bool get_plug_sequent_flag(ID_TYPE plugid);
+void set_plug_sequent_flag(ID_TYPE plugid, bool val);
 
 PRIOR get_node_priority(ID_TYPE nodeid);
 size_t get_node_module_cnt(ID_TYPE nodeid);

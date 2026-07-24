@@ -822,7 +822,6 @@ void MainWindow::setupGraphicsScene()
             busShadow->setZValue(-1);
             busShadow->setParentItem(bus);
             m_scene->addItem(bus);
-            m_scene->addItem(busShadow);
             m_semiMatrixBusItems[i] = bus;
         }
 

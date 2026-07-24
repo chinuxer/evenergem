@@ -303,9 +303,10 @@ bool SimpleTopology::toggleNodeEnabled(int nodeId)
     int nodeTotal = 0;
 
     // 根据拓扑类型定位节点指针
-    if (SemiHybrid == m_config.topotype)
+    if (SemiHybrid == m_config.topotype && nodeId > m_nodes.size())
     {
-        nodeTotal = m_nodes.size() * 3 / 2;          // 线环 + 矩阵总节点数
+        nodeTotal = m_nodes.size() * 3 / 2; // 线环 + 矩阵总节点数
+
         int matrixIdx = nodeId - m_nodes.size() - 1; // 转换为矩阵节点下标
         if (matrixIdx < 0 || matrixIdx >= m_matrixnodes.size())
         {
@@ -369,6 +370,7 @@ void SimpleTopology::linkage_publisher(int plugid)
     {
         if (m_piles[i].pau_data->refresh == true)
         {
+            ::publish_Outcomes(i + 1, gtarget_result + i);
             ::publish_Outcomes(i + 1, gtarget_result + i);
             m_piles[i].pau_data->refresh = false;
         }

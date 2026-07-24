@@ -11,38 +11,110 @@
  */
 #include "pau_broker.h"
 #include "pau_tactic.h"
-void fillout_Outcomes(ID_TYPE chargeeID, FlowMap *map, St_PolicyTargetResult *outcome)
+static int compress_outcomes(St_PolicyTargetResult *outcome, int size)
 {
-    outcome->PolicyTargetdPowerNode[0] = get_plug_connectednode(chargeeID);
+    int write_idx = 0;
 
-    outcome->PolicyTarget_RelayNo[0][0] = 0xfe;
-    outcome->PolicyTarget_RelayNo[0][1] = 0xff;
-    for (int n = 1; n < outcome->u8PolicyTargetPowerNodeNum; n++)
+    for (int read_idx = 0; read_idx < size; read_idx++)
     {
-        if (ID_VAIN == map[n - 1].direction || ID_VAIN == map[n - 1].contactorid)
+        if (outcome->PolicyTargetdPowerNode[read_idx] != 0)
+        {
+            outcome->PolicyTargetdPowerNode[write_idx] = outcome->PolicyTargetdPowerNode[read_idx];
+            outcome->PolicyTarget_RelayNo[write_idx][0] = outcome->PolicyTarget_RelayNo[read_idx][0];
+            outcome->PolicyTarget_RelayNo[write_idx][1] = outcome->PolicyTarget_RelayNo[read_idx][1];
+            write_idx++;
+        }
+    }
+
+    return write_idx;
+}
+static enum METABOLIN metabole_alethes(unsigned char nodeid, unsigned char relayid, FlowMap *pflow_map)
+{
+    for (int m = 0; m < MAXNODES_MEM_LMT; m++)
+    {
+        if (ID_VAIN == pflow_map[m].direction)
+        {
+            return METABOLIN_VANISH;
+        }
+        if (pflow_map[m].direction != nodeid)
+        {
+            continue;
+        }
+        return pflow_map[m].contactorid == relayid ? METABOLIN_INTACT : METABOLIN_CHANGE;
+    }
+    return METABOLIN_VANISH;
+}
+static int map_outlier_truncated(ID_TYPE plugid, FlowMap *map, St_PolicyTargetResult *outcome)
+{
+    // 比较outcome和map的内容,如果节点和接触器的匹配发生了变化,则该节点和该条支路上hops大于该节点hops的节点匹配关系都需被截断,仅保留不变化的节点-接触器匹配关系
+    //  在map[m]中找到direction与outcome->PolicyTargetdPowerNode[n]相同的节点,如果map[m]的contactorid与outcome->PolicyTarget_RelayNo[n][0]不同
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    if (NULL == pplug)
+    {
+        return 0;
+    }
+    int n;
+    for (n = 0; n < outcome->u8PolicyTargetPowerNodeNum; n++)
+    {
+        if (ID_VAIN == outcome->PolicyTargetdPowerNode[n])
         {
             break;
         }
-        outcome->PolicyTargetdPowerNode[n] = map[n - 1].direction;
-        outcome->PolicyTarget_RelayNo[n][0] = map[n - 1].contactorid;
-        outcome->PolicyTarget_RelayNo[n][1] = map[n - 1].appendix;
+        if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX && outcome->PolicyTargetdPowerNode[n] > NODES_MAX_ENCIRCLE)
+        {
+            break;
+        }
+        if (METABOLIN_INTACT != metabole_alethes(outcome->PolicyTargetdPowerNode[n], outcome->PolicyTarget_RelayNo[n][0], map))
+        {
+            memset(outcome->PolicyTargetdPowerNode + n, 0, MAXNODES_MEM_LMT - n);
+            memset(outcome->PolicyTarget_RelayNo + n, 0, 2 * (MAXNODES_MEM_LMT - n));
+            break;
+        }
+    }
+    return n;
+}
+static void fillout_Outcomes(ID_TYPE chargeeID, FlowMap *map, St_PolicyTargetResult *outcome)
+{
+
+    int n;
+    for (n = 0; n < outcome->u8PolicyTargetPowerNodeNum; n++)
+    {
+        if (ID_VAIN == map[n].direction || ID_VAIN == map[n].contactorid)
+        {
+            break;
+        }
+        outcome->PolicyTargetdPowerNode[n] = (unsigned char)map[n].direction;
+        outcome->PolicyTarget_RelayNo[n][0] = (unsigned char)map[n].contactorid;
+        outcome->PolicyTarget_RelayNo[n][1] = (unsigned char)map[n].appendix;
         if (ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX)
         {
             outcome->PolicyTarget_RelayNo[n][1] = 255;
         }
-        if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX && map[n - 1].contactorid > 2 * NODES_MAX_ENCIRCLE && map[n - 1].appendix > ID_VAIN)
+        if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX && map[n].contactorid > 2 * NODES_MAX_ENCIRCLE && map[n].appendix > ID_VAIN)
         {
-            ID_TYPE appendix_contactor = map[n - 1].appendix;
+            ID_TYPE appendix_contactor = map[n].appendix;
             appendix_contactor = (ID_TYPE)(appendix_contactor + NODES_MAX_ENCIRCLE);
-            outcome->PolicyTarget_RelayNo[n][1] = appendix_contactor;
+            outcome->PolicyTarget_RelayNo[n][1] = (unsigned char)appendix_contactor;
         }
     }
-
-    pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
-    for (int n = 1; n <= outcome->u8PolicyTargetPowerNodeNum; n++)
+    for (n = n; n < MAXNODES_MEM_LMT; n++)
     {
-        pau_printf("[%d] = %02d %02d %02d\r\n", n, outcome->PolicyTargetdPowerNode[n - 1], outcome->PolicyTarget_RelayNo[n - 1][0], outcome->PolicyTarget_RelayNo[n - 1][1]);
+        outcome->PolicyTargetdPowerNode[n] = 0;
+        outcome->PolicyTarget_RelayNo[n][0] = 0;
+        outcome->PolicyTarget_RelayNo[n][1] = 0;
     }
+}
+static int get_encirclenodes_num_outcomes(St_PolicyTargetResult *outcome)
+{
+    int cnt = 0;
+    for (int i = 0; i < MAXNODES_MEM_LMT; i++)
+    {
+        if (ID_VAIN < outcome->PolicyTargetdPowerNode[i] && outcome->PolicyTargetdPowerNode[i] <= NODES_MAX_ENCIRCLE)
+        {
+            cnt++;
+        }
+    }
+    return cnt;
 }
 /**
  * @brief Perform serviceable patrol on devices connected to a plug
@@ -61,14 +133,31 @@ void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
         return;
     }
     print_outcomes(chargeeID);
-    memset(outcome->PolicyTargetdPowerNode, 0, MAXNODES_MEM_LMT);
-    memset(outcome->PolicyTarget_RelayNo, 0, 2 * MAXNODES_MEM_LMT);
-
-    outcome->u8PolicyTargetPowerNodeNum = get_plug_allocated_cnt(chargeeID);
+    if (0 == get_plug_allocated_cnt(chargeeID))
+    {
+        memset(outcome->PolicyTargetdPowerNode, 0, MAXNODES_MEM_LMT);
+        memset(outcome->PolicyTarget_RelayNo, 0, MAXNODES_MEM_LMT * 2);
+        return;
+    }
     FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN, ID_VAIN}};
-    FlowMap *pflow_map = encircle_flowDirectioned(chargeeID, map);
-    excircle_flowDirectioned(chargeeID, pflow_map);
-    fillout_Outcomes(chargeeID, map, outcome);
+    FlowMap *nexttag = encircle_flowDirectioned(chargeeID, map);
+    int offset = map_outlier_truncated(chargeeID, map, outcome);
+    if (offset == get_encirclenodes_num_outcomes(outcome))
+    {
+        outcome->u8PolicyTargetPowerNodeNum = get_plug_allocated_cnt(chargeeID);
+        excircle_flowDirectioned(chargeeID, nexttag, map + MAXNODES_MEM_LMT);
+        fillout_Outcomes(chargeeID, map, outcome);
+    }
+    else
+    {
+        outcome->u8PolicyTargetPowerNodeNum = offset + excircle_flowDirectioned(chargeeID, map + offset, map + MAXNODES_MEM_LMT);
+        set_plug_sequent_flag(chargeeID, true);
+    }
+    pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
+    for (int n = 0; n < outcome->u8PolicyTargetPowerNodeNum; n++)
+    {
+        pau_printf("[%d] = %02d %02d %02d\r\n", n, outcome->PolicyTargetdPowerNode[n], outcome->PolicyTarget_RelayNo[n][0], outcome->PolicyTarget_RelayNo[n][1]);
+    }
 }
 
 static void handle_init_cmd(va_list *args)

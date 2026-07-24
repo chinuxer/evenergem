@@ -51,7 +51,20 @@ void get_neighbors(ID_TYPE nodeid, ID_TYPE *neighbors)
     neighbors[1] = get_neighbor_left(nodeid);
     neighbors[2] = get_neighbor_diagonal(nodeid);
 }
-
+bool is_furthernode_pathself(ID_TYPE plugid, ID_TYPE nodeid_alpha, ID_TYPE nodeid_beta)
+{
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    hops_refresh(pplug->connectedNode, plugid);
+    int hops_alpha = get_hops_occupied(pplug->connectedNode, nodeid_alpha, plugid);
+    int hops_beta = get_hops_occupied(pplug->connectedNode, nodeid_beta, plugid);
+    hops_refresh(nodeid_alpha, plugid);
+    int hops_tween = get_hops_occupied(nodeid_alpha, nodeid_beta, plugid);
+    if (hops_alpha < 0 || hops_beta < 0 || hops_tween < 0)
+    {
+        return false;
+    }
+    return ((hops_beta - hops_alpha) == hops_tween);
+}
 /**
  * @brief 更新某个充电桩相关的接触器状态：构建无环生成树(优先走线环接触器、无寄生环、全连通)
  *
@@ -452,26 +465,12 @@ static void pullout_further_nodes(ID_TYPE nodeid)
     {
         return;
     }
-    hops_refresh(pplug->connectedNode, pnode->plug_id);
-    int hops_compared = get_hops_occupied(pplug->connectedNode, nodeid, pnode->plug_id); // 当前移除节点到本桩的跳数
-    if (hops_compared < 0)
-    {
-        return;
-    }
+
     PAU_Vector *releasenode_list = pau_vector_create(PAU_VECTOR_DEFAULT_CAPACITY);
 
     PAU_VECTOR_FOREACH(allocated_nodeid, pplug->allocatedNodes) // 遍历节点所属桩已分配的节点
     {
-
-        int hops_allocated_nodeid = get_hops_occupied(pplug->connectedNode, allocated_nodeid, pplug->id);
-        hops_refresh(nodeid, pnode->plug_id);
-        int distance_to_nodeid = get_hops_occupied(nodeid, allocated_nodeid, pnode->plug_id);
-        // void dist_print(void);
-        // void lock_print(void);
-        // dist_print();
-        // lock_print();
-        hops_refresh(pplug->connectedNode, pnode->plug_id);
-        if ((hops_allocated_nodeid - hops_compared) == distance_to_nodeid) // 如果节点所属桩已分配的节点到当前移除节点的跳数等于各自到基直连节点的差值
+        if (is_furthernode_pathself(pnode->plug_id, nodeid, allocated_nodeid)) // 如果节点所属桩已分配的节点到当前移除节点的跳数等于各自到基直连节点的差值
         {
             pau_vector_append(releasenode_list, allocated_nodeid); // 找到所有跳数大于hops_compared的节点
         }
@@ -1020,20 +1019,21 @@ void sort_flowmap_by_hops(FlowMap *map, size_t n)
         }
     }
 }
-void excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
+int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
 {
     if (!ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
     {
-        return;
+        return 0;
     }
-    if (!ASSERT_PLUG_ID(plugid) || NULL == pobject)
+    if (!ASSERT_PLUG_ID(plugid) || NULL == pmap)
     {
-        return;
+        return 0;
     }
+    FlowMap *pobject = pmap;
     PAU_Vector *avatar_collcection = pau_vector_create(NODES_MAX_ENCIRCLE / 2);
     collect_avatar_nodes(avatar_collcection, plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-
+    int index = 0;
     for (size_t c = 2 * NODES_MAX_ENCIRCLE + 1; c <= CONTACTOR_MAX; c++)
     {
         struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
@@ -1093,9 +1093,14 @@ void excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
                 pobject->appendix = nodeid_alpha;
             }
         }
-        pobject += 1;
+        pobject = pmap + ++index;
+        if (pobject > pmap_fin)
+        {
+            pobject = pmap;
+        }
     }
     pau_vector_destroy(avatar_collcection);
+    return index;
 }
 
 FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
@@ -1107,8 +1112,10 @@ FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     size_t cnt = pau_vector_size(pplug->allocatedNodes);
     hops_refresh(pplug->connectedNode, plugid);
-
-    size_t index_map = 0;
+    pobject->contactorid = 254;
+    pobject->direction = pplug->connectedNode;
+    pobject->appendix = 0;
+    size_t index_map = 1;
     for (size_t c = 1; c <= 3 * NODES_MAX_ENCIRCLE / 2; c++)
     {
         struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);

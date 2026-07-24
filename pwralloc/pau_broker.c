@@ -115,6 +115,7 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
         p->obj_array[i].requiredPower = 0;
         p->obj_array[i].hysteresisCnt = 0;
         p->obj_array[i].refresh = false;
+        p->obj_array[i].sequent = false;
         p->obj_array[i].allocatedNodes = (PAU_Vector *)pau_calloc(sizeof(PAU_Vector) + (PAU_VECTOR_DEFAULT_CAPACITY + 1) * sizeof(size_t), __func__);
         if (NULL != p->obj_array[i].allocatedNodes)
         {
@@ -498,6 +499,22 @@ void set_plug_refresh_flag(ID_TYPE plugid, bool val)
         return;
     }
     refer_Plug_Extracted(plugid)->refresh = val;
+}
+bool get_plug_sequent_flag(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return false;
+    }
+    return refer_Plug_Extracted(plugid)->sequent;
+}
+void set_plug_sequent_flag(ID_TYPE plugid, bool val)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return;
+    }
+    refer_Plug_Extracted(plugid)->sequent = val;
 }
 
 ID_TYPE get_plug_connectednode(ID_TYPE plugid)
