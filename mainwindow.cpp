@@ -1003,8 +1003,14 @@ void MainWindow::updateGraphics()
                 }
                 else
                 {
-                    // 默认灰色
-                    pen = QPen(Qt::gray, 2, Qt::DashLine);
+                    if (i < config.nodeCount)
+                    {
+                        pen = QPen(Qt::gray, 2, Qt::DashLine); // 环形接触器
+                    }
+                    else
+                    {
+                        pen = QPen(Qt::darkGray, 2, Qt::DotLine); // 对角线接触器
+                    }
                 }
             }
             else

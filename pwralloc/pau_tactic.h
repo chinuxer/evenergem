@@ -40,6 +40,7 @@ typedef struct
     unsigned char PolicyTargetdPowerNode[MAXNODES_MEM_LMT];
     unsigned char PolicyTarget_RelayNo[MAXNODES_MEM_LMT][2];
 } St_PolicyTargetResult;
+
 // union PCU_RawData retriver_PCU_RawData(ID_TYPE id, PCURawData data_type);
 size_t get_plug_chargingnodes_cnt(ID_TYPE plugid);
 size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighbor_plugid, ID_TYPE nodeid, ID_TYPE neighbor_nodeid);

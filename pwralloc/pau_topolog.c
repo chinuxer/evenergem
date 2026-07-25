@@ -254,6 +254,10 @@ static void semi_matrix_contactor_update(struct Alloc_plugObj *pplug)
         return;
     }
     PAU_Vector *avatar_nodes_collection = pau_vector_create(NODES_MAX_ENCIRCLE / 2);
+    if (NULL == avatar_nodes_collection)
+    {
+        return;
+    }
     int maxcontactor_nbr = 5 * NODES_MAX_ENCIRCLE / 2;
     maxcontactor_nbr = CONTACTOR_MAX - maxcontactor_nbr > 0 ? CONTACTOR_MAX - maxcontactor_nbr : 0;
     // 遍历所有接触器，判断是否闭合
@@ -467,6 +471,10 @@ static void pullout_further_nodes(ID_TYPE nodeid)
     }
 
     PAU_Vector *releasenode_list = pau_vector_create(PAU_VECTOR_DEFAULT_CAPACITY);
+    if (NULL == releasenode_list)
+    {
+        return;
+    }
 
     PAU_VECTOR_FOREACH(allocated_nodeid, pplug->allocatedNodes) // 遍历节点所属桩已分配的节点
     {
@@ -631,6 +639,10 @@ static bool isConnectedNode(ID_TYPE nodeid)
 static bool idlenodes_donatio(ID_TYPE plugid)
 {
     PAU_Vector *idlenode_list = pau_vector_create(NODES_MAX_ENCIRCLE);
+    if (NULL == idlenode_list)
+    {
+        return false;
+    }
     // 优先将非connectednnode的节点放到列表中
     for (ID_TYPE nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
     {
@@ -732,6 +744,10 @@ static bool matrix_node_avatar(ID_TYPE plugid)
     }
     bool found = false;
     PAU_Vector *scorelist = pau_vector_create(NODE_MAX - NODES_MAX_ENCIRCLE);
+    if (NULL == scorelist)
+    {
+        return false;
+    }
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     hops_refresh(pplug->connectedNode, plugid);
 
@@ -1031,6 +1047,10 @@ int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
     }
     FlowMap *pobject = pmap;
     PAU_Vector *avatar_collcection = pau_vector_create(NODES_MAX_ENCIRCLE / 2);
+    if (NULL == avatar_collcection)
+    {
+        return 0;
+    }
     collect_avatar_nodes(avatar_collcection, plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     int index = 0;
@@ -1041,7 +1061,7 @@ int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
         {
             continue;
         }
-        pau_printf("[TACTIC] excircle_flowDirectioned contactorid:%d (%d-%d) is closed\r\n", c, pcontactor->node1, pcontactor->node2);
+        // pau_printf("[TACTIC] excircle_flowDirectioned contactorid:%d (%d-%d) is closed\r\n", c, pcontactor->node1, pcontactor->node2);
         if (pcontactor->node1 < NODES_MAX_ENCIRCLE || pcontactor->node2 < NODES_MAX_ENCIRCLE)
         {
             continue;
