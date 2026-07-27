@@ -43,13 +43,20 @@ static void availablePwr_Init(struct Alloc_nodeObj *pnode, int rated_pwr)
 }
 static void modulesPerNode_Init(struct Alloc_nodeObj *pnode)
 {
-#include "module_config.h"
-    if (pnode->id < 1 || pnode->id > (sizeof(module_nbr_map) / sizeof(module_nbr_map[0])))
+    /* 节点容量由上位机运行时配置；初始化时使用一个模块的安全默认值。 */
+    pnode->moudle_box.size = 1;
+}
+bool oprt_node_module_count_set(ID_TYPE nodeid, size_t module_count)
+{
+    if (!ASSERT_NODE_ID(nodeid) || module_count < 1 || module_count > MAX_MODULES_PER_NODE)
     {
-        pnode->moudle_box.size = 0;
-        return;
+        return false;
     }
-    pnode->moudle_box.size = module_nbr_map[pnode->id - 1];
+
+    struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+    pnode->moudle_box.size = module_count;
+    availablePwr_Init(pnode, oprt_ratedpwr_per_module(0));
+    return true;
 }
 ID_TYPE calc_plug_connectednode(ID_TYPE plugid, ID_TYPE nodes_total, ID_TYPE plugs_total)
 {

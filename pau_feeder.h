@@ -9,6 +9,7 @@ extern "C"
     void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome);
     bool database_building(TOPOTYPE, size_t, size_t);
     int oprt_ratedpwr_per_module(int);
+    bool oprt_node_module_count_set(ID_TYPE nodeid, size_t module_count);
     bool requestPower(ID_TYPE, int);
     bool releasePower(ID_TYPE, int);
     bool hear_Canaries_Twittering(void);

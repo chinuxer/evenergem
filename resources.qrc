@@ -2,5 +2,7 @@
     <qresource prefix="/">
         <file>disclaimer.txt</file>
         <file>manual.pdf</file>
+        <file>spinbox_up_arrow.svg</file>
+        <file>spinbox_down_arrow.svg</file>
     </qresource>
 </RCC>

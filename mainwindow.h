@@ -46,6 +46,8 @@ private slots:
     void onPriorityChanged();
     void showAboutDialog();
     void onHelpGuideTriggered();
+    void onNodeCapacitySettingsTriggered();
+    void onContactorLoadSettingsTriggered();
     // 手动操作测试
     void onAllocateNodeClicked();
     void onReleaseNodeClicked();
@@ -66,6 +68,9 @@ private:
     void updateGraphics();
     void updateStatusDisplay();
     void updatePileComboBox();
+    int activeNodeCount() const;
+    QVector<int> loadNodeCapacities(int nodeCount) const;
+    bool saveNodeCapacities(const QVector<int> &capacities, QString *errorMessage) const;
     TelnetClient *m_telnetClient;
     LogWindow *m_logWindow;
     bool m_remoteControlMode;

@@ -35,8 +35,8 @@ extern "C"
         PRIOR_VAIN = 0, // 没有置优先级=枪没有在工作
         PRIOR_BASE,     // 会被PRIOR_SVIP褫夺功率配额
         PRIOR_VIP,      // 不会被PRIOR_SVIP抢褫夺功率配额,会分摊PRIOR_BASE的功率配额
-        PRIOR_SVIP,     // 会褫夺PRIOR_BASE的功率配合
-        PRIOR_EXTREME,  // 会褫夺所有非PRIO_EXTREME功率配合
+        PRIOR_SVIP,     // 会褫夺PRIOR_BASE的功率配额
+        PRIOR_EXTREME,  // 会褫夺所有非PRIO_EXTREME功率配额
     } PRIOR;
     typedef enum
     {

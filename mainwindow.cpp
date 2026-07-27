@@ -28,6 +28,15 @@
 #include <QFile>
 #include <QDir>
 #include <QUrl>
+#include <QCoreApplication>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QJsonArray>
+#include <QJsonParseError>
+#include <QSaveFile>
+#include <QScrollArea>
+#include <QSpinBox>
+#include <QTextStream>
 #include <cstddef>
 #include "pau_feeder.h"
 
@@ -335,6 +344,11 @@ MainWindow::MainWindow(TOPOTYPE topologyType, QWidget *parent)
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
     QAction *guideAction = helpMenu->addAction(tr("说明书(&G)"));
     connect(guideAction, &QAction::triggered, this, &MainWindow::onHelpGuideTriggered);
+    QMenu *settingsMenu = menuBar->addMenu(tr("设置(&S)"));
+    QAction *nodeCapacityAction = settingsMenu->addAction(tr("节点容量"));
+    connect(nodeCapacityAction, &QAction::triggered, this, &MainWindow::onNodeCapacitySettingsTriggered);
+    QAction *contactorLoadAction = settingsMenu->addAction(tr("接触器负载"));
+    connect(contactorLoadAction, &QAction::triggered, this, &MainWindow::onContactorLoadSettingsTriggered);
     setMenuBar(menuBar);
 
     // Telnet 客户端初始化（已在构造函数开头创建）
@@ -353,19 +367,20 @@ MainWindow::~MainWindow()
 
 void MainWindow::onApplyConfigClicked()
 {
+    // ========== 1. 读取用户界面参数 ==========
     int nodeCount = ui->nodeCountSpinBox->value();
     int pileCount = ui->pileCountSpinBox->value();
-    int unitPower = ui->unitPowerSpinBox->value() * 10;
+    int unitPower = ui->unitPowerSpinBox->value() * 10; // 界面显示的是 kW，底层存储为 0.1kW 单位
     (void)oprt_ratedpwr_per_module(unitPower);
     ui->powerSpinBox->setValue(ui->unitPowerSpinBox->value());
-    // 验证配置
+
+    // ========== 2. 参数合法性校验 ==========
     if (nodeCount % 2 != 0)
     {
         QMessageBox::warning(this, "配置错误", "节点数量必须是偶数");
         ui->nodeCountSpinBox->setValue(nodeCount + 1);
-        nodeCount = nodeCount + 1; // 更新变量
+        nodeCount = nodeCount + 1;
     }
-
     if (pileCount <= 0)
     {
         QMessageBox::warning(this, "配置错误", "充电桩数量必须大于0");
@@ -376,8 +391,6 @@ void MainWindow::onApplyConfigClicked()
         QMessageBox::warning(this, "配置错误", "单桩功率必须大于0kW 小于200kW");
         return;
     }
-
-    // 确保充电桩数量不超过节点数量
     if (pileCount > nodeCount)
     {
         pileCount = nodeCount;
@@ -386,38 +399,76 @@ void MainWindow::onApplyConfigClicked()
                                  QString("充电桩数量已调整为节点数量: %1").arg(pileCount));
     }
 
-    // 创建配置
+    // ========== 3. 计算总节点数（含矩阵节点，若为半矩阵模式） ==========
+    int totalNodes = nodeCount;
+    if (SemiHybrid == m_topologyType)
+    {
+        totalNodes = nodeCount * 3 / 2; // 线环节点 + 矩阵节点
+    }
+
+    // ========== 4. 确保 module_config.json 存在（若不存在则生成默认全1配置） ==========
+    QString configPath = QDir(QCoreApplication::applicationDirPath()).filePath("module_config.json");
+    if (!QFile::exists(configPath))
+    {
+        QVector<int> defaultCap(totalNodes, 1);
+        if (!saveNodeCapacities(defaultCap, nullptr))
+        {
+            ui->logTextEdit->append("警告：无法创建默认节点容量配置文件");
+        }
+        else
+        {
+            ui->logTextEdit->append("已生成默认节点容量配置（所有节点模块数为1）");
+        }
+    }
+
+    // ========== 5. 加载节点容量配置 ==========
+    QVector<int> capacities = loadNodeCapacities(totalNodes);
+    // 若加载的容量数量不足 totalNodes，会自动补1；若文件损坏则全部为1
+
+    // ========== 6. 初始化底层数据库（创建节点、接触器、充电桩等） ==========
+    (void)::database_building(m_topologyType, nodeCount, pileCount);
+
+    // ========== 7. 将加载的节点容量应用到每个节点 ==========
+    for (int i = 0; i < capacities.size() && i < totalNodes; ++i)
+    {
+        ID_TYPE nodeId = i + 1;
+        (void)::oprt_node_module_count_set(nodeId, static_cast<size_t>(capacities[i]));
+    }
+
+    // ========== 8. 清除旧的发布结果（避免显示过时状态） ==========
+    for (int n = 1; n <= pileCount; ++n)
+    {
+        clear_publish_outcomes(n);
+    }
+
+    // ========== 9. 构建 UI 拓扑配置 ==========
     TopologyConfig config;
     config.topotype = m_topologyType;
     config.nodeCount = nodeCount;
     config.pileCount = pileCount;
     config.unitPower = unitPower;
     config.circleRadius = 200.0;
-    config.center = QPointF(300, 300);
-    int nodelist_size = nodeCount;
-    if (SemiHybrid == m_topologyType) // 如果是半矩阵半环形
-    {
-        config.circleRadius = 200.0;
-        config.center = QPointF(300, 500);
-        nodelist_size = nodeCount * 3 / 2;
-    }
+    config.center = QPointF(300, (SemiHybrid == m_topologyType) ? 500 : 300);
+
+    // ========== 10. 初始化拓扑（图形场景）并刷新界面 ==========
+    m_topology->initialize(config);
+
+    // 更新节点列表（用于手动选择）
+    int nodelist_size = (SemiHybrid == m_topologyType) ? totalNodes : nodeCount;
     ui->nodeListWidget->clear();
     ui->nodeListWidget->addItem("点击节点选择");
     for (int i = 1; i <= nodelist_size; i++)
     {
         ui->nodeListWidget->addItem(QString("节点 %1").arg(i));
     }
-    (void)::database_building(m_topologyType, nodeCount, pileCount);
-    for (int n = 1; n <= pileCount; n++)
-    {
-        clear_publish_outcomes(n);
-    }
-    // 初始化拓扑
-    m_topology->initialize(config);
 
-    // 更新UI
+    // 更新充电桩下拉列表
     updatePileComboBox();
-    setupGraphicsScene(); // 重新设置场景
+
+    // 重新创建图形场景（会重新绘制所有图形项）
+    setupGraphicsScene();
+
+    // 刷新状态显示
     onTopologyChanged();
 
     ui->logTextEdit->append(QString("✓ 配置已应用: %1节点, %2充电桩").arg(nodeCount).arg(pileCount));
@@ -651,6 +702,7 @@ void MainWindow::setupGraphicsScene()
     const auto &nodes = m_topology->getNodes();
     const auto &contactors = m_topology->getContactors();
     const auto &piles = m_topology->getChargingPiles();
+    const auto &matrixnodes = m_topology->getMatrixNodes();
 
     // 创建节点图形项
     m_nodeItems.resize(nodes.size());
@@ -768,11 +820,13 @@ void MainWindow::setupGraphicsScene()
         double meros = (config.circleRadius + 25) / (config.nodeCount / 2 + 1);
         for (int i = 0; i < config.nodeCount / 2; i++)
         {
+            const auto &node = matrixnodes[i];
             QPointF pos = QPointF(m_jointItems[i]->x(), meros + i * meros);
             QGraphicsRectItem *item = new QGraphicsRectItem(-12, -8, 24, 16);
             item->setPos(pos);
             item->setBrush(Qt::lightGray);
             item->setPen(QPen(QColor(15, 20, 35), 1, Qt::SolidLine, Qt::RoundCap));
+            item->setToolTip(QString("节点容量 %1kW").arg(node.pau_data->power_available / 10.0, 0, 'f', 1));
             item->setZValue(98);
             m_scene->addItem(item);
             m_matrixNodeItems[i] = item;
@@ -1480,6 +1534,179 @@ void MainWindow::onHelpGuideTriggered()
     {
         QMessageBox::warning(this, tr("错误"), tr("无法打开 PDF 文件，请确保已安装 PDF 阅读器"));
     }
+}
+
+int MainWindow::activeNodeCount() const
+{
+    if (SemiHybrid == m_topologyType)
+    {
+        return m_topology->getNodes().size() + m_topology->getMatrixNodes().size();
+    }
+    else
+    {
+        return m_topology->getNodes().size();
+    }
+}
+
+QVector<int> MainWindow::loadNodeCapacities(int nodeCount) const
+{
+    QVector<int> capacities(nodeCount, 1);
+    const QString configPath = QDir(QCoreApplication::applicationDirPath()).filePath("module_config.json");
+    QFile file(configPath);
+    if (!file.open(QIODevice::ReadOnly))
+        return capacities;
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject())
+        return capacities;
+
+    const QJsonValue values = document.object().value("node_capacities");
+    if (!values.isArray())
+        return capacities;
+
+    const QJsonArray array = values.toArray();
+    for (int i = 0; i < array.size() && i < capacities.size(); ++i)
+    {
+        if (!array.at(i).isDouble())
+            return QVector<int>(nodeCount, 1);
+
+        const double value = array.at(i).toDouble();
+        if (value != std::floor(value) || value < 1 || value > MAX_MODULES_PER_NODE)
+            return QVector<int>(nodeCount, 1);
+        capacities[i] = static_cast<int>(value);
+    }
+    return capacities;
+}
+
+bool MainWindow::saveNodeCapacities(const QVector<int> &capacities, QString *errorMessage) const
+{
+    const QDir executableDir(QCoreApplication::applicationDirPath());
+    QJsonArray array;
+    for (int capacity : capacities)
+        array.append(capacity);
+
+    QJsonObject root;
+    root.insert("node_capacities", array);
+    QSaveFile configFile(executableDir.filePath("module_config.json"));
+    if (!configFile.open(QIODevice::WriteOnly) ||
+        configFile.write(QJsonDocument(root).toJson(QJsonDocument::Indented)) < 0 ||
+        !configFile.commit())
+    {
+        if (errorMessage)
+            *errorMessage = tr("无法保存 %1").arg(configFile.fileName());
+        return false;
+    }
+
+    if (!executableDir.mkpath("pwralloc"))
+    {
+        if (errorMessage)
+            *errorMessage = tr("无法创建 pwralloc 目录");
+        return false;
+    }
+
+    QSaveFile headerFile(executableDir.filePath("pwralloc/module_config.h"));
+    if (!headerFile.open(QIODevice::WriteOnly))
+    {
+        if (errorMessage)
+            *errorMessage = tr("无法保存 %1").arg(headerFile.fileName());
+        return false;
+    }
+    QTextStream stream(&headerFile);
+    stream.setCodec("UTF-8");
+    stream << "/* 由 evenergem 的节点容量设置自动生成。 */\n"
+           << "static const ID_TYPE module_nbr_map[] = {\n";
+    for (int i = 0; i < capacities.size(); ++i)
+        stream << "    " << capacities.at(i) << (i + 1 == capacities.size() ? "\n" : ",\n");
+    stream << "};\n";
+    stream.flush();
+    if (!headerFile.commit())
+    {
+        if (errorMessage)
+            *errorMessage = tr("无法保存 %1").arg(headerFile.fileName());
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::onNodeCapacitySettingsTriggered()
+{
+    const int nodeCount = activeNodeCount();
+    if (nodeCount <= 0)
+    {
+        QMessageBox::warning(this, tr("节点容量"), tr("当前没有可配置的节点。"));
+        return;
+    }
+
+    const QVector<int> capacities = loadNodeCapacities(nodeCount);
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("节点容量设置"));
+    dialog.setMinimumWidth(360);
+    dialog.setStyleSheet(
+        "QDialog { background-color: #101827; }"
+        "QLabel { color: #a3ccf5; font-weight: bold; }"
+        "QScrollArea { background-color: #141e30; border: 1px solid #2a82da; border-radius: 5px; }"
+        "QScrollArea > QWidget > QWidget { background-color: #141e30; }"
+        "QSpinBox { background-color: #1a1a2e; border: 1px solid #2a82da; border-radius: 4px; color: #00e0ff; padding: 4px; }"
+        "QSpinBox::up-button, QSpinBox::down-button { background-color: #3b5278; width: 18px; }"
+        "QSpinBox::up-button:hover, QSpinBox::down-button:hover { background-color: #4c6a98; }"
+        "QSpinBox::up-arrow { image: url(:/spinbox_up_arrow.svg); width: 12px; height: 8px; }"
+        "QSpinBox::down-arrow { image: url(:/spinbox_down_arrow.svg); width: 12px; height: 8px; }"
+        "QPushButton { background-color: #1e5ca6; border: 1px solid #2a82da; border-radius: 5px; color: white; padding: 6px 16px; font-weight: bold; }"
+        "QPushButton:hover { background-color: #2a82da; }"
+        "QScrollBar:vertical { background: #101827; width: 10px; }"
+        "QScrollBar::handle:vertical { background: #2a82da; border-radius: 5px; min-height: 24px; }");
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+    QLabel *description = new QLabel(
+        tr("设置当前配置中节点所包含的模块数（1 - %1）。").arg(MAX_MODULES_PER_NODE), &dialog);
+    description->setWordWrap(true);
+    layout->addWidget(description);
+
+    QScrollArea *scrollArea = new QScrollArea(&dialog);
+    scrollArea->setWidgetResizable(true);
+    QWidget *content = new QWidget(scrollArea);
+    QFormLayout *form = new QFormLayout(content);
+    QVector<QSpinBox *> editors;
+    editors.reserve(nodeCount);
+    for (int i = 0; i < nodeCount; ++i)
+    {
+        QSpinBox *editor = new QSpinBox(content);
+        editor->setRange(1, MAX_MODULES_PER_NODE);
+        editor->setValue(capacities.at(i));
+        form->addRow(tr("节点 %1").arg(i + 1), editor);
+        editors.append(editor);
+    }
+    scrollArea->setWidget(content);
+    layout->addWidget(scrollArea);
+
+    QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    QVector<int> updatedCapacities;
+    updatedCapacities.reserve(editors.size());
+    for (QSpinBox *editor : editors)
+        updatedCapacities.append(editor->value());
+
+    QString errorMessage;
+    if (!saveNodeCapacities(updatedCapacities, &errorMessage))
+    {
+        QMessageBox::critical(this, tr("节点容量"), errorMessage);
+        return;
+    }
+    for (int i = 0; i < updatedCapacities.size(); ++i)
+        (void)oprt_node_module_count_set(i + 1, static_cast<size_t>(updatedCapacities.at(i)));
+
+    onTopologyChanged();
+    ui->logTextEdit->append(tr("✓ 已更新 %1 个节点的模块容量").arg(updatedCapacities.size()));
+}
+
+void MainWindow::onContactorLoadSettingsTriggered()
+{
+    QMessageBox::information(this, tr("接触器负载"), tr("接触器负载设置将在后续版本提供。"));
 }
 void MainWindow::onToggleNodeEnableClicked()
 {
