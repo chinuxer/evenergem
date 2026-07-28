@@ -43,8 +43,17 @@ static void availablePwr_Init(struct Alloc_nodeObj *pnode, int rated_pwr)
 }
 static void modulesPerNode_Init(struct Alloc_nodeObj *pnode)
 {
-    /* 节点容量由上位机运行时配置；初始化时使用一个模块的安全默认值。 */
+#if defined(__IAR_SYSTEMS_ICC__)
+#include "module_config.h"
+    if (pnode->id < 1 || pnode->id > (sizeof(module_nbr_map) / sizeof(module_nbr_map[0])))
+    {
+        pnode->moudle_box.size = 0;
+        return;
+    }
+    pnode->moudle_box.size = module_nbr_map[pnode->id - 1];
+#else
     pnode->moudle_box.size = 1;
+#endif
 }
 bool oprt_node_module_count_set(ID_TYPE nodeid, size_t module_count)
 {

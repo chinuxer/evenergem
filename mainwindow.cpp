@@ -1680,6 +1680,8 @@ void MainWindow::onNodeCapacitySettingsTriggered()
     layout->addWidget(scrollArea);
 
     QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Save)->setText("保存");
+    buttons->button(QDialogButtonBox::Cancel)->setText("取消");
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttons);

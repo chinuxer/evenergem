@@ -102,7 +102,7 @@ SOURCES += \
     pwralloc/pau_directed.c\
     pwralloc/pau_topolog.c  \
     pwralloc/pau_vector.c\
-    pwralloc/pau_fsm.c
+    pwralloc/pau_deploy.c
 
 HEADERS += \
     mainwindow.h \

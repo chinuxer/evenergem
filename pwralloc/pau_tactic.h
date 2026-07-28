@@ -13,7 +13,7 @@
 #define WEIGHT_8 WEIGHT_HIERARCHY *WEIGHT_7
 #define WEIGHT_9 WEIGHT_HIERARCHY *WEIGHT_8
 #define WEIGHT_10 WEIGHT_HIERARCHY *WEIGHT_9
-#define GET_PCU_RAWDATA(id, data, type) //(retriver_PCU_RawData(id, data).type##_data)
+
 enum Senario
 {
     SENARIO_PREEMPT = 0,
@@ -30,16 +30,10 @@ typedef struct
 } FlowMap;
 enum METABOLIN
 {
-    METABOLIN_VANISH = 1,
-    METABOLIN_INTACT,
-    METABOLIN_CHANGE
+    METABOLIN_VANISH = 1, // 节点不在列表中
+    METABOLIN_INTACT,     // 节点路径保持原样
+    METABOLIN_CHANGE      // 节点路径改变
 };
-typedef struct
-{
-    unsigned char u8PolicyTargetPowerNodeNum;
-    unsigned char PolicyTargetdPowerNode[MAXNODES_MEM_LMT];
-    unsigned char PolicyTarget_RelayNo[MAXNODES_MEM_LMT][2];
-} St_PolicyTargetResult;
 
 // union PCU_RawData retriver_PCU_RawData(ID_TYPE id, PCURawData data_type);
 size_t get_plug_chargingnodes_cnt(ID_TYPE plugid);
@@ -74,4 +68,6 @@ NodeState get_node_state(ID_TYPE nodeid);
 PlugState get_plug_state(ID_TYPE plugid);
 bool plug_allocated_contain_node(ID_TYPE plugid, ID_TYPE nodeid);
 size_t get_plug_allocated_cnt_excircle(ID_TYPE plugid);
+bool route_authentichanged(ID_TYPE plugid, St_PolicyTargetResult *outcome, bool (*check_freenode_func)(ID_TYPE));
+
 #endif

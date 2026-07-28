@@ -18,8 +18,8 @@ extern "C"
 #include <float.h>
 #include <limits.h>
 #include "pau_vector.h"
+#include "pau_distinct.h"
 
-#define MAXNODES_MEM_LMT PAU_VECTOR_DEFAULT_CAPACITY
 #define MAX_MODULES_PER_NODE 3
 #define RATED_PWR_PER_MODULE 625
 
@@ -202,8 +202,7 @@ VARIABLE_LIST_PENDING_EXPANDED
 #define FORCE_INLINE __attribute__(always_inline)
 
 #ifdef __IMPORT_PAU_DBFUNC__
-    void *
-    pau_alloc(size_t size, PAU_MALLOC_CURSE span)
+    void *pau_alloc(size_t size, PAU_MALLOC_CURSE span)
     {
 #define ALIGNMENT_SIZE sizeof(size_t)
 #define ALIGN_SIZE(s) (((s) + ALIGNMENT_SIZE - 1) & ~(ALIGNMENT_SIZE - 1))
@@ -312,8 +311,7 @@ VARIABLE_LIST_PENDING_EXPANDED
         }
     }
 #else
-void *
-pau_calloc(size_t size, const char *func_name);
+void *pau_calloc(size_t size, const char *func_name);
 struct Alloc_nodeObj *refer_Node_Extracted(ID_TYPE node);
 struct Alloc_plugObj *refer_Plug_Extracted(ID_TYPE plug);
 struct Alloc_contactorObj *refer_Contactor_Extracted(ID_TYPE contactor);

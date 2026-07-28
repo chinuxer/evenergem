@@ -1183,7 +1183,22 @@ FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
     sort_flowmap_by_hops(pobject, index_map);
     return pobject + index_map;
 }
-
+enum METABOLIN metabole_alethes(unsigned char nodeid, unsigned char relayid, FlowMap *pflow_map)
+{
+    for (int m = 0; m < MAXNODES_MEM_LMT; m++)
+    {
+        if (ID_VAIN == pflow_map[m].direction)
+        {
+            return METABOLIN_VANISH;
+        }
+        if (pflow_map[m].direction != nodeid)
+        {
+            continue;
+        }
+        return pflow_map[m].contactorid == relayid ? METABOLIN_INTACT : METABOLIN_CHANGE;
+    }
+    return METABOLIN_VANISH;
+}
 bool set_node_availability(ID_TYPE node_id)
 {
     if (!ASSERT_NODE_ID(node_id) && SemiHybrid == TOPOLOGY_TYPE)

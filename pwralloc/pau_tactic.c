@@ -149,7 +149,7 @@ void print_outcomes(ID_TYPE plugid)
             // Format: ID (decimal) + Power (5 digits) + Priority (1 digit)
             // Example: P1, 240kW, Prior 1 -> "1002401"
             // Note: Prompt says "P1: 1002401". ID=1, Power=00240, Prior=1.
-            sprintf(plug_dec_str, "%d%05d%d", pplug->id, pplug->requiredPower * 10, pplug->priority);
+            sprintf(plug_dec_str, "%d%05d%d", pplug->id, pplug->requiredPower, pplug->priority);
 
             char plug_hex_str[8] = {'\0'};
             dec_str_to_hex_str(plug_dec_str, plug_hex_str, sizeof(plug_hex_str));
@@ -398,3 +398,63 @@ static float stable_Required_Current(float current, ID_TYPE plug_id)
     pdata->sample_current_pool[pdata->index++ % DEMAND_CURRENT_SAMPLENUM] = current;
     return (var_stablish_threshold == pdata->counter ? last_interpolated : 0.0f);
 }
+#if defined(__IAR_SYSTEMS_ICC__)
+void available_power_update(void)
+{
+    pau_printf("[PAU] available_power_update:");
+    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
+    {
+        float favailablepwr = GET_PCU_RAWDATA(nodeid, ENUM_PCUDATA_OF_NODE_AVAILABLEPWR, float);
+        refer_Node_Extracted(nodeid)->power_available = (int)(favailablepwr * 10);
+        pau_printf("%d:%d,", nodeid, refer_Node_Extracted(nodeid)->power_available);
+    }
+    pau_printf("\r\n");
+}
+bool get_plug_surging_flag(ID_TYPE plugid)
+{
+    static int cnt[MAXNODES_MEM_LMT + 1] = {0};
+    cnt[plugid]++;
+    float fcurrent = GET_PCU_RAWDATA(plugid, ENUM_PCUDATA_OF_PLUG_DEMAND_CURRENT, float);
+    float fvoltage = GET_PCU_RAWDATA(plugid, ENUM_PCUDATA_OF_PLUG_VOLTAGE, float);
+    float fcomared_current = get_plug_requiredPower(plugid) * 100.0f / fvoltage;
+    if (fabsf(fcomared_current - fcurrent) < 1.0f)
+    {
+        if (0 == cnt[plugid] % 60) // ~1 min
+            pau_printf("[PAU] var_upd p%d idle delta=%.1fA\r\n", plugid, (double)(fcomared_current - fcurrent));
+        return false;
+    }
+    fcurrent = stable_Required_Current(fcurrent, plugid);
+    if (fcurrent < FLUCTION_THRESHOLD)
+    {
+        return false;
+    }
+    size_t *addr_cnt = get_plug_hysteresisCnt(plugid);
+    float pwr = fvoltage * fcurrent;
+    if (isHysteresis_Active(pwr, plugid, addr_cnt))
+    {
+        int pwr_int = (int)(pwr / 100.0f);
+        int old_pwr = get_plug_charging_power(plugid);
+        int alloc_cnt = get_plug_allocated_cnt(plugid);
+        pau_printf("[PAU] var_upd p%d ACT pwr=%.0fkW V=%.0fV I=%.0fA old=%dkW nodes=%d tick=%d\r\n",
+                   plugid, (double)pwr / 1000.0, (double)fvoltage, (double)fcurrent,
+                   old_pwr / 10, alloc_cnt, (int)*addr_cnt);
+        bool releasePower(ID_TYPE, int);
+        bool requestPower(ID_TYPE, int);
+        available_power_update();
+        if (pwr_int < old_pwr && 1 >= alloc_cnt)
+        {
+            pau_printf("[PAU] var_upd p%d KEEP only 1 node remain\r\n", plugid);
+            return false;
+        }
+        bool is_rel = (pwr_int < old_pwr);
+        pau_printf("[PAU] var_upd p%d EXEC %s target=%dkW alloc=%d\r\n",
+                   plugid, is_rel ? "release" : "request",(double)pwr / 1000.0, alloc_cnt);
+        (void)(is_rel ? releasePower(plugid, pwr_int) : requestPower(plugid, pwr_int));
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+#endif
