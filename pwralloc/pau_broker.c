@@ -548,6 +548,5 @@ bool plug_allocated_contain_node(ID_TYPE plugid, ID_TYPE nodeid)
     {
         return false;
     }
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    return pau_vector_contains(pplug->allocatedNodes, nodeid);
+    return plugid == refer_Node_Extracted(nodeid)->plug_id;
 }

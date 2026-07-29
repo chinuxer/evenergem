@@ -115,22 +115,18 @@ static int get_encirclenodes_num_outcomes(St_PolicyTargetResult *outcome)
     int cnt = 0;
     for (int i = 0; i < MAXNODES_MEM_LMT; i++)
     {
-        if (ID_VAIN < outcome->PolicyTargetdPowerNode[i] && outcome->PolicyTargetdPowerNode[i] <= NODES_MAX_ENCIRCLE)
+        ID_TYPE nodeid = outcome->PolicyTargetdPowerNode[i];
+        if (refer_Node_Extracted(nodeid)->pseudocycledon)
+        {
+            continue;
+        }
+        if (ID_VAIN < nodeid && nodeid <= NODES_MAX_ENCIRCLE)
         {
             cnt++;
         }
     }
     return cnt;
 }
-/**
- * @brief Perform serviceable patrol on devices connected to a plug
- * Checks for faulty nodes or contactors and handles them by deordering
- * @param plug_id ID of the plug to patrol
- * @param patrol_type Type of patrol to perform (NODE_PATROLLING or CONTACTOR_PATROLLING)
- * @return void
- * @sideeffect May deorder faulty nodes and update plug allocation
- * @errorcond Returns early if plug has invalid priority or no chargers
- */
 
 void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
 {
@@ -151,14 +147,18 @@ void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
     int offset = map_outlier_truncated(chargeeID, map, outcome);
     if (offset == encirclenodes_num)
     {
-        pau_printf("[PAU] %d ==%d\r\n", offset, encirclenodes_num);
         outcome->u8PolicyTargetPowerNodeNum = get_plug_allocated_cnt(chargeeID);
         (void)excircle_flowDirectioned(chargeeID, nexttag, map + MAXNODES_MEM_LMT - 1);
+        // 打印当前map
+        for (int i = 0; i < 10; i++)
+        {
+            pau_printf("map[%d]: %d %d %d %d\r\n", i, map[i].direction, map[i].hops, map[i].contactorid, map[i].appendix);
+        }
         fillout_Outcomes(chargeeID, map, outcome, outcome->u8PolicyTargetPowerNodeNum);
     }
     else
     {
-        pau_printf("[PAU] %d !=%d\r\n", offset, encirclenodes_num);
+        pau_printf("%d != %d \r\n", offset, encirclenodes_num);
         outcome->u8PolicyTargetPowerNodeNum = offset;
         set_plug_sequent_flag(chargeeID, true);
         pau_printf("[PAU] plug%d shift power route...shrink to minimal collection with %d node(s)\r\n", chargeeID, offset);

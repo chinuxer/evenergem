@@ -132,7 +132,27 @@ QVector<QColor> SimpleTopology::generateColors(int count)
 
     return colors;
 }
+int SimpleTopology::get_totalpower(void)
+{
+    int m_totalPower = 0;
+    // 遍历m_nodes，获取所有节点的模块数，乘以模块的额定功率，求和
 
+    for (int nodeId = 1; nodeId <= m_nodes.size(); nodeId++)
+    {
+        int moduleCnt = m_nodes[nodeId - 1].pau_data->moudle_box.size;
+        int modulePower = m_nodes[nodeId - 1].pau_data->power_available;
+        int nodePower = moduleCnt * modulePower;
+        m_totalPower += nodePower;
+    }
+    for (int nodeId = 1; nodeId <= m_matrixnodes.size(); nodeId++)
+    {
+        int moduleCnt = m_matrixnodes[nodeId - 1].pau_data->moudle_box.size;
+        int modulePower = m_matrixnodes[nodeId - 1].pau_data->power_available;
+        int nodePower = moduleCnt * modulePower;
+        m_totalPower += nodePower;        
+    }
+    return m_totalPower;
+}
 bool SimpleTopology::requestPower(int pileId, int requiredPower)
 {
     if (pileId < 1 || pileId > m_piles.size())
@@ -140,8 +160,9 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
         qWarning() << "无效的充电桩ID:" << pileId;
         return false;
     }
+    int totalpower_limit = get_totalpower();
 
-    if (requiredPower < 0 || requiredPower > m_nodes.size() * m_config.unitPower)
+    if (requiredPower < 0 || requiredPower > totalpower_limit)
     {
         qWarning() << "无效的功率请求:" << requiredPower;
         return false;
@@ -155,6 +176,16 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
         return false;
     }
     requiredPower += m_piles[pileId - 1].pau_data->requiredPower;
+    if (requiredPower > totalpower_limit)
+    {
+
+        pau_log_printf("请求功率超出范围 %d", requiredPower);
+        requiredPower = totalpower_limit;
+        QMessageBox::warning(
+            nullptr,
+            QStringLiteral("非法操作"),
+            QStringLiteral("充电桩%1请求功率超出系统容量,已调整为%2kW").arg(pileId).arg(requiredPower / 10.0));
+    }
     bool retval = ::requestPower(pileId, requiredPower);
     linkage_publisher(pileId);
     emit topologyChanged();
@@ -211,6 +242,11 @@ void SimpleTopology::allocateNodeToPile(int nodeId, int pileId, bool emit_signal
         qWarning() << "无效的节点或充电桩ID:" << nodeId << pileId;
         return;
     }
+    ::push_NodetoPlug_pseudocyclose(nodeId, pileId);
+    if (emit_signal)
+    {
+        emit topologyChanged();
+    }
 }
 
 void SimpleTopology::releaseNodeFromPile(int nodeId, int pileId, bool emit_signal)
@@ -220,6 +256,11 @@ void SimpleTopology::releaseNodeFromPile(int nodeId, int pileId, bool emit_signa
     {
         qWarning() << "无效的节点或充电桩ID:" << nodeId << pileId;
         return;
+    }
+    ::pull_NodefromPlug_pseudocyclose(nodeId, pileId);
+    if (emit_signal)
+    {
+        emit topologyChanged();
     }
 }
 

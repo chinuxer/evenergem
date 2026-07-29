@@ -102,6 +102,7 @@ void pau_log_printf(const char *fmt, ...);
         ID_TYPE id;
         ID_TYPE plug_id;
         PRIOR priority;
+        bool pseudocycledon;
         int power_available;
         ModuleBox moudle_box;
         NodeState state;
@@ -268,7 +269,7 @@ VARIABLE_LIST_PENDING_EXPANDED
     {
         if (!ASSERT_NODE_ID(node))
         {
-            return NULL;
+            return (gpNodesArray->obj_array);
         }
         else
         {
@@ -280,7 +281,7 @@ VARIABLE_LIST_PENDING_EXPANDED
     {
         if (!ASSERT_PLUG_ID(plug))
         {
-            return NULL;
+            return (gpPlugsArray->obj_array);
         }
         else
         {
@@ -292,7 +293,7 @@ VARIABLE_LIST_PENDING_EXPANDED
     {
         if (!ASSERT_CONTACTOR_ID(contactor))
         {
-            return NULL;
+            return (gpContactorsArray->obj_array);
         }
         else
         {
@@ -303,7 +304,7 @@ VARIABLE_LIST_PENDING_EXPANDED
     {
         if (!ASSERT_PLUG_ID(plug))
         {
-            return NULL;
+            return (gpReqSettlerArray->obj_array);
         }
         else
         {

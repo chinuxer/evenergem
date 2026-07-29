@@ -103,9 +103,10 @@ public:
 public slots:
     // 设置充电桩优先级
     void setPilePriority(int pileId, int priority);
-
+    int get_totalpower(void);
 signals:
-    void topologyChanged();
+    void
+    topologyChanged();
 
 private:
     TopologyConfig m_config;

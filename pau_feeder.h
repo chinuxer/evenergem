@@ -14,6 +14,8 @@ extern "C"
     bool releasePower(ID_TYPE, int);
     bool hear_Canaries_Twittering(void);
     bool set_node_availability(ID_TYPE node_id);
+    void push_NodetoPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid);
+    void pull_NodefromPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid);
 }
 #ifdef __IMPORT_DATAFEEDER__
 St_PolicyTargetResult gtarget_result[MAXNODES_MEM_LMT] = {0};

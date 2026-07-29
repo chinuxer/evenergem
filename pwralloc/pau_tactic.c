@@ -179,10 +179,12 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
     {
         bool lower_nodeid_alpha = plug_allocated_contain_node(plugid, nodeid - NODES_MAX_ENCIRCLE);
         bool lower_nodeid_beta = plug_allocated_contain_node(plugid, nodeid - NODES_MAX_ENCIRCLE / 2);
-        score += WEIGHT_5 * (get_node_chargingplugid(nodeid) > ID_VAIN ? 0 : 1);
-        score += WEIGHT_4 * lower_nodeid_alpha;
-        score += WEIGHT_4 * lower_nodeid_beta;
-        if (WEIGHT_4 + WEIGHT_5 <= score)
+        score += WEIGHT_6 * (get_node_chargingplugid(nodeid) > ID_VAIN ? 0 : 1);
+        score += WEIGHT_5 * (lower_nodeid_alpha ? 1 : 0);
+        score += WEIGHT_5 * (lower_nodeid_beta ? 1 : 0);
+        score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(nodeid - NODES_MAX_ENCIRCLE) ? 1 : 0);
+        score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(nodeid - NODES_MAX_ENCIRCLE / 2) ? 1 : 0);
+        if (WEIGHT_5 + WEIGHT_6 <= score)
         {
             ID_TYPE connected_nodeid = get_plug_connectednode(plugid);
 
@@ -199,7 +201,8 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         }
         else
         {
-            score += WEIGHT_2 * (get_plug_allocated_cnt_excircle(plugid));
+            ID_TYPE plug_of_node = get_node_chargingplugid(nodeid);
+            score += WEIGHT_2 * (get_plug_allocated_cnt_excircle(plug_of_node));
         }
 
         return score;
@@ -448,7 +451,7 @@ bool get_plug_surging_flag(ID_TYPE plugid)
         }
         bool is_rel = (pwr_int < old_pwr);
         pau_printf("[PAU] var_upd p%d EXEC %s target=%dkW alloc=%d\r\n",
-                   plugid, is_rel ? "release" : "request",(double)pwr / 1000.0, alloc_cnt);
+                   plugid, is_rel ? "release" : "request", (double)pwr / 1000.0, alloc_cnt);
         (void)(is_rel ? releasePower(plugid, pwr_int) : requestPower(plugid, pwr_int));
         return true;
     }
