@@ -550,3 +550,21 @@ bool plug_allocated_contain_node(ID_TYPE plugid, ID_TYPE nodeid)
     }
     return plugid == refer_Node_Extracted(nodeid)->plug_id;
 }
+bool is_node_pseudocycledon(ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid))
+    {
+        return false;
+    }
+    return refer_Node_Extracted(nodeid)->pseudocycledon;
+}
+
+void recover_node_pseudocycledon(ID_TYPE plugid, ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid))
+    {
+        return;
+    }
+    refer_Node_Extracted(nodeid)->pseudocycledon = false;
+    set_locked(plugid, nodeid);
+}

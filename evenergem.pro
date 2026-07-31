@@ -118,7 +118,8 @@ FORMS += \
 RESOURCES += resources.qrc
 RC_ICONS = appicon.ico
 DEFINES += CUSTOM_HEAP_SIZE=0x00010000\
-           QTDEMOD_NODES_CAPACITY=54
+# QTDEMOD_NODES_CAPACITY = max_node count + max_pile_count
+           QTDEMOD_NODES_CAPACITY=100
 # -------------------------------------------------
 # 4. 其他平台配置 (Unix/Linux/Mac)
 # -------------------------------------------------

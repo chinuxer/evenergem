@@ -92,8 +92,19 @@ int pau_vector_contains_ex(PAU_Vector *vec, const void *target, PAU_VectorCompar
          pau_vector_iter_next(&_it))                         \
         for (size_t val, bool _once = true; _once && (val = *(size_t *)pau_vector_iter_get(&_it); _once = false)
 
-#define PAU_VECTOR_FOREACH(val, vec)                      \
-    for (size_t index = 1; index <= (vec)->size; index++) \
-        for (size_t val = 1; (val > 0) && (val = (vec)->data[index]) > 0; val = 0)
+#define PAU_VECTOR_FOREACH(val, vec)                                        \
+    for (size_t PAU_INDEX_##__COUNTER__ = 1;                                \
+         PAU_INDEX_##__COUNTER__ <= (vec)->size;                            \
+         PAU_INDEX_##__COUNTER__++)                                         \
+        for (size_t val = 1;                                                \
+             (val > 0) && (val = (vec)->data[PAU_INDEX_##__COUNTER__]) > 0; \
+             val = 0)
 
+#define PAU_VECTOR_FOREACH_BREAK(val, vec, stop)                            \
+    for (size_t PAU_INDEX_##__COUNTER__ = 1;                                \
+         PAU_INDEX_##__COUNTER__ <= (vec)->size && !(stop);                 \
+         PAU_INDEX_##__COUNTER__++)                                         \
+        for (size_t val = 1;                                                \
+             (val > 0) && (val = (vec)->data[PAU_INDEX_##__COUNTER__]) > 0; \
+             val = 0)
 #endif // PAU_VECTOR_H

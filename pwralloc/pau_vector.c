@@ -44,7 +44,7 @@ PAU_Vector *pau_vector_create(size_t init_capacity)
     return vec;
 }
 // 复制PAU_Vector（对应QVector<T>::QVector(const QVector<T> &other)）
-PAU_Vector *pau_vector_copy(PAU_Vector *vec)
+PAU_Vector *pau_vector_clone(PAU_Vector *vec)
 {
     if (!vec)
         return NULL;

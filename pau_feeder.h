@@ -6,7 +6,7 @@
 #endif
 extern "C"
 {
-    void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome);
+    bool publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome);
     bool database_building(TOPOTYPE, size_t, size_t);
     int oprt_ratedpwr_per_module(int);
     bool oprt_node_module_count_set(ID_TYPE nodeid, size_t module_count);
@@ -24,7 +24,7 @@ extern St_PolicyTargetResult gtarget_result[MAXNODES_MEM_LMT];
 
 int get_contactor_pwrflow_dest(int contactorId)
 {
-    if (contactorId < 1 || contactorId > MAXNODES_MEM_LMT)
+    if (contactorId < 1 || contactorId > CONTACTOR_MAX)
     {
         return -1;
     }

@@ -95,7 +95,7 @@ public:
         nodeCountSpinBox = new QSpinBox(centralwidget);
         nodeCountSpinBox->setObjectName(QString::fromUtf8("nodeCountSpinBox"));
         nodeCountSpinBox->setMinimum(6);
-        nodeCountSpinBox->setMaximum(QTDEMOD_NODES_CAPACITY);
+        nodeCountSpinBox->setMaximum(QTDEMOD_NODES_CAPACITY * 2 / 3);
         nodeCountSpinBox->setValue(20);
         horizontalLayout_nodePile->addWidget(nodeCountSpinBox);
         label_3 = new QLabel(centralwidget);
@@ -106,7 +106,7 @@ public:
         pileCountSpinBox = new QSpinBox(centralwidget);
         pileCountSpinBox->setObjectName(QString::fromUtf8("pileCountSpinBox"));
         pileCountSpinBox->setMinimum(1);
-        pileCountSpinBox->setMaximum(18);
+        pileCountSpinBox->setMaximum(QTDEMOD_NODES_CAPACITY / 3);
         pileCountSpinBox->setValue(10);
         horizontalLayout_nodePile->addWidget(pileCountSpinBox);
 

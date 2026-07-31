@@ -128,32 +128,35 @@ static int get_encirclenodes_num_outcomes(St_PolicyTargetResult *outcome)
     return cnt;
 }
 
-void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
+bool publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
 {
     if (!ASSERT_PLUG_ID(chargeeID))
     {
-        return;
+        return false;
     }
     print_outcomes(chargeeID);
     if (0 == get_plug_allocated_cnt(chargeeID))
     {
+        outcome->u8PolicyTargetPowerNodeNum = 0;
         memset(outcome->PolicyTargetdPowerNode, 0, MAXNODES_MEM_LMT);
         memset(outcome->PolicyTarget_RelayNo, 0, MAXNODES_MEM_LMT * 2);
-        return;
+        pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
+        return false;
     }
     FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN, ID_VAIN, ID_VAIN}};
     FlowMap *nexttag = encircle_flowDirectioned(chargeeID, map);
     int encirclenodes_num = get_encirclenodes_num_outcomes(outcome);
     int offset = map_outlier_truncated(chargeeID, map, outcome);
+    bool is_outlier = false;
     if (offset == encirclenodes_num)
     {
         outcome->u8PolicyTargetPowerNodeNum = get_plug_allocated_cnt(chargeeID);
         (void)excircle_flowDirectioned(chargeeID, nexttag, map + MAXNODES_MEM_LMT - 1);
         // 打印当前map
-        for (int i = 0; i < 10; i++)
-        {
-            pau_printf("map[%d]: %d %d %d %d\r\n", i, map[i].direction, map[i].hops, map[i].contactorid, map[i].appendix);
-        }
+        // for (int i = 0; i < 10; i++)
+        // {
+        //     pau_printf("map[%d]: %d %d %d %d\r\n", i, map[i].direction, map[i].hops, map[i].contactorid, map[i].appendix);
+        // }
         fillout_Outcomes(chargeeID, map, outcome, outcome->u8PolicyTargetPowerNodeNum);
     }
     else
@@ -162,6 +165,7 @@ void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
         outcome->u8PolicyTargetPowerNodeNum = offset;
         set_plug_sequent_flag(chargeeID, true);
         pau_printf("[PAU] plug%d shift power route...shrink to minimal collection with %d node(s)\r\n", chargeeID, offset);
+        is_outlier = true;
     }
 
     for (int n = outcome->u8PolicyTargetPowerNodeNum; n < MAXNODES_MEM_LMT; n++)
@@ -175,12 +179,13 @@ void publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
     {
         pau_printf("[%d] = %02d %02d %02d\r\n", n, outcome->PolicyTargetdPowerNode[n], outcome->PolicyTarget_RelayNo[n][0], outcome->PolicyTarget_RelayNo[n][1]);
     }
+    return is_outlier;
 }
 
 bool route_authentichanged(ID_TYPE plugid, St_PolicyTargetResult *outcome, bool (*check_freenode_func)(ID_TYPE))
 {
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    PAU_Vector *vec_copy = pau_vector_copy(pplug->allocatedNodes);
+    PAU_Vector *vec_copy = pau_vector_clone(pplug->allocatedNodes);
     // 不需要检测接触器，只需要检测节点是否关机
     for (int n = 0; n < outcome->u8PolicyTargetPowerNodeNum; n++)
     {
@@ -191,11 +196,13 @@ bool route_authentichanged(ID_TYPE plugid, St_PolicyTargetResult *outcome, bool 
     }
     // 逐个检测vec_copy中剩余节点是否关机
     bool ret = true;
-    PAU_VECTOR_FOREACH(nodeid, vec_copy)
+    bool stop = false;
+    PAU_VECTOR_FOREACH_BREAK(nodeid, vec_copy, stop)
     {
         if (!check_freenode_func(nodeid))
         {
             ret = false;
+            stop = true;
             break;
         }
     }

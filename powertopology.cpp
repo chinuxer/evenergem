@@ -149,7 +149,7 @@ int SimpleTopology::get_totalpower(void)
         int moduleCnt = m_matrixnodes[nodeId - 1].pau_data->moudle_box.size;
         int modulePower = m_matrixnodes[nodeId - 1].pau_data->power_available;
         int nodePower = moduleCnt * modulePower;
-        m_totalPower += nodePower;        
+        m_totalPower += nodePower;
     }
     return m_totalPower;
 }
@@ -411,8 +411,15 @@ void SimpleTopology::linkage_publisher(int plugid)
     {
         if (m_piles[i].pau_data->refresh == true)
         {
-            ::publish_Outcomes(i + 1, gtarget_result + i);
-            ::publish_Outcomes(i + 1, gtarget_result + i);
+            int cnt = m_nodes.size();
+            while (cnt-- > 0)
+            {
+                if (!::publish_Outcomes(i + 1, gtarget_result + i))
+                {
+                    break;
+                }
+            }
+
             m_piles[i].pau_data->refresh = false;
         }
     }

@@ -203,6 +203,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         {
             ID_TYPE plug_of_node = get_node_chargingplugid(nodeid);
             score += WEIGHT_2 * (get_plug_allocated_cnt_excircle(plug_of_node));
+            score += WEIGHT_4 * (0 < get_plug_allocated_cnt_excircle(plugid) ? 1 : 0);
         }
 
         return score;
@@ -217,6 +218,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         shortage = shortage >= WEIGHT_HIERARCHY ? WEIGHT_HIERARCHY - 1 : shortage;
         score += WEIGHT_4 * (shortage % WEIGHT_HIERARCHY);
         score = (plugid == neighbor_plugid) ? 0 : score; // 如果邻居节点所属充电桩与当前充电桩相同,则得分为0,不进行继承
+        score = is_node_pseudocycledon(neighbor_nodeid) ? 0 : score;
         return score;
     }
     case SENARIO_ACQUIRE:
@@ -238,9 +240,15 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
             {
                 return score;
             }
-            if (get_node_chargingplugid(neighbor_nodeid) == plugid) // 如果是邻接点，则比较该点到直连点的距离
+            if (get_node_chargingplugid(neighbor_nodeid) == plugid && !is_node_pseudocycledon(neighbor_nodeid)) // 如果是邻接点(但限于ana_katabatic_flow接触器限流pseudocyclis点不能继续发展新节点)则比较该点到直连点的距离
             {
                 hops = get_dist(nodeid);
+                // 如果遇到自己plug的pseudocyclis点则同化为encirce节点,
+                if (is_node_pseudocycledon(nodeid) && get_node_chargingplugid(nodeid) == plugid)
+                {
+                    hops = -1;
+                    recover_node_pseudocycledon(plugid, nodeid);
+                }
             }
             else if (get_node_chargingplugid(neighbor_nodeid) > ID_VAIN)
             {
@@ -253,6 +261,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         score += WEIGHT_5 * (hops != -1 ? 1 : 0);
         score += WEIGHT_5 * (nodeid == get_plug_connectednode(plugid) && 0 == get_dist(nodeid) ? 1 : 0);
         score = ID_VAIN < get_node_chargingplugid(nodeid) ? 0 : score; // 如果是占用的节点,并且优先级大于等于本桩的优先级
+        score = is_node_pseudocycledon(nodeid) ? 0 : score;
         return score;
     }
     case SENARIO_PREEMPT:

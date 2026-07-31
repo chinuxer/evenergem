@@ -563,7 +563,7 @@ void MainWindow::onPileSelectionChanged(int index)
                 .arg(pile.pau_data->state == PLUG_CHARGING ? "充电中" : "空闲")
                 .arg(pile.pau_data->connectedNode)
                 .arg(pile.pau_data->requiredPower / 10.0, 0, 'f', 1)
-                .arg(pile.requiredNodes)
+                .arg(pile.pau_data->shortage + pile.pau_data->allocatedNodes->size)
                 .arg(pile.pau_data->allocatedNodes->size)
                 .arg(pile.pau_data->priority));
 
@@ -1296,11 +1296,10 @@ void MainWindow::updateStatusDisplay()
         {
             nodeList += QString::number(nodeId) + " ";
         }
-
         statusText += QString("桩%1: %2/%3 [%4]\n")
                           .arg(pile.id)
                           .arg(allocated.size())
-                          .arg(pile.requiredNodes)
+                          .arg(pile.pau_data->shortage + pile.pau_data->allocatedNodes->size)
                           .arg(nodeList.isEmpty() ? "无节点" : nodeList);
     }
 
@@ -1837,7 +1836,6 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
         {
             ChargingPile &pile = const_cast<ChargingPile &>(m_topology->getChargingPiles()[pileId - 1]);
             pile.pau_data->requiredPower = requiredPower;
-            pile.requiredNodes = (requiredPower + cfg.unitPower - 1) / cfg.unitPower;
             pile.pau_data->priority = (PRIOR)priority;
             pile.pau_data->state = (requiredPower > 0) ? PLUG_CHARGING : PLUG_IDLE;
         }
@@ -1850,7 +1848,6 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
         {
             ChargingPile &pile = const_cast<ChargingPile &>(m_topology->getChargingPiles()[i]);
             pile.pau_data->requiredPower = 0;
-            pile.requiredNodes = 0;
             pile.pau_data->state = PLUG_IDLE;
         }
     }

@@ -32,7 +32,6 @@ struct Contactor
 struct ChargingPile
 {
     int id; // 充电桩ID
-    int requiredNodes;
     struct Alloc_plugObj *pau_data;
     QColor color; // 显示颜色
 };
