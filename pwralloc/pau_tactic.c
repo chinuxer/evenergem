@@ -182,8 +182,11 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         score += WEIGHT_6 * (get_node_chargingplugid(nodeid) > ID_VAIN ? 0 : 1);
         score += WEIGHT_5 * (lower_nodeid_alpha ? 1 : 0);
         score += WEIGHT_5 * (lower_nodeid_beta ? 1 : 0);
-        score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(nodeid - NODES_MAX_ENCIRCLE) ? 1 : 0);
-        score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(nodeid - NODES_MAX_ENCIRCLE / 2) ? 1 : 0);
+        if (have_plug_occupied_matrixnode(plugid))
+        {
+            score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(nodeid - NODES_MAX_ENCIRCLE) ? 1 : 0);
+            score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(nodeid - NODES_MAX_ENCIRCLE / 2) ? 1 : 0);
+        }
         if (WEIGHT_5 + WEIGHT_6 <= score)
         {
             ID_TYPE connected_nodeid = get_plug_connectednode(plugid);

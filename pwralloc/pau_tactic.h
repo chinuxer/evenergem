@@ -71,4 +71,5 @@ size_t get_plug_allocated_cnt_excircle(ID_TYPE plugid);
 bool route_authentichanged(ID_TYPE plugid, St_PolicyTargetResult *outcome, bool (*check_freenode_func)(ID_TYPE));
 bool is_node_pseudocycledon(ID_TYPE nodeid);
 void recover_node_pseudocycledon(ID_TYPE plugid, ID_TYPE nodeid);
+bool have_plug_occupied_matrixnode(ID_TYPE plugid);
 #endif

@@ -1070,7 +1070,7 @@ static void cutoff_root_node(struct Alloc_plugObj *pplug,
     update_plug_shortage_power(plug_intruder);
     transferPower(plug_intruder);
 }
-static bool have_plug_occupied_matrixnode(ID_TYPE plugid)
+bool have_plug_occupied_matrixnode(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
     {
