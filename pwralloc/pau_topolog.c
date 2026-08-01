@@ -65,6 +65,36 @@ bool is_furthernode_pathself(ID_TYPE plugid, ID_TYPE nodeid_alpha, ID_TYPE nodei
     }
     return ((hops_beta - hops_alpha) == hops_tween);
 }
+
+void expseudous_eisalethes(struct Alloc_plugObj *pplug)
+{
+    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
+    {
+        if (!is_node_pseudocycledon(nodeid))
+        {
+            continue;
+        }
+        ID_TYPE neighbors[3] = {0};
+        get_neighbors(nodeid, neighbors);
+        for (int i = 0; i < 3; i++)
+        {
+            if (!ASSERT_NODE_ID_ENCIRCLE(neighbors[i]))
+            {
+                continue;
+            }
+            struct Alloc_nodeObj *pneighbornode = refer_Node_Extracted(neighbors[i]);
+            if (pplug->id != pneighbornode->plug_id)
+            {
+                continue;
+            }
+            if (pneighbornode->pseudocycledon)
+            {
+                continue;
+            }
+            recover_node_pseudocycledon(pplug->id, nodeid);
+        }
+    }
+}
 /**
  * @brief 更新某个充电桩相关的接触器状态：构建无环生成树(优先走线环接触器、无寄生环、全连通)
  *
@@ -79,7 +109,8 @@ bool is_furthernode_pathself(ID_TYPE plugid, ID_TYPE nodeid_alpha, ID_TYPE nodei
  * @param pileId 充电桩ID
  */
 
-static void acyclic_tree_building(struct Alloc_plugObj *pplug)
+static void
+acyclic_tree_building(struct Alloc_plugObj *pplug)
 {
     if (pau_vector_size(pplug->allocatedNodes) == 0)
     {
@@ -388,6 +419,8 @@ void updateContactorStates(ID_TYPE plugid, ID_TYPE nodeid)
             }
         }
     }
+    //
+    expseudous_eisalethes(pplug);
     //  为单个充电桩已占用的节点集合，自动闭合接触器，形成一棵无环、连通、优先走环形边、必要时走对角线边的生成树。
     acyclic_tree_building(pplug);
 
@@ -548,6 +581,9 @@ static void pullout_matrices_related(ID_TYPE victim_plugid)
 
     struct Alloc_plugObj *victim_pplug = refer_Plug_Extracted(victim_plugid);
     PAU_Vector *victim_allocatednodes_copy = pau_vector_clone(victim_pplug->allocatedNodes);
+    PAU_Vector *nodes_to_release = pau_vector_create(MAXNODES_MEM_LMT);
+
+    ID_TYPE node_survive = ID_VAIN;
     // 遍历所有victim_pplug占据的matrix节点,如果该节点在线环中的node1,node2连接点不再属于victim_pplug的allocatedNodes,则移除该节点
     PAU_VECTOR_FOREACH(nodeid, victim_allocatednodes_copy)
     {
@@ -571,10 +607,33 @@ static void pullout_matrices_related(ID_TYPE victim_plugid)
 
         if (victim_plugid != refer_Node_Extracted(node_appha)->plug_id && victim_plugid != refer_Node_Extracted(node_beta)->plug_id)
         {
-            pull_NodefromPlug(nodeid, victim_plugid);
-            victim_pplug->refresh = true;
+            pau_vector_append(nodes_to_release, nodeid);
+        }
+        else if (is_node_pseudocycledon(node_appha))
+        {
+            pau_vector_append(nodes_to_release, nodeid);
+            pau_vector_append(nodes_to_release, node_appha);
+        }
+        else if (is_node_pseudocycledon(node_beta))
+        {
+            pau_vector_append(nodes_to_release, nodeid);
+            pau_vector_append(nodes_to_release, node_beta);
+        }
+        else
+        {
+            node_survive = nodeid;
         }
     }
+    if (ID_VAIN == node_survive)
+    {
+        victim_pplug->refresh = true;
+
+        PAU_VECTOR_FOREACH(relased_node, nodes_to_release)
+        {
+            pull_NodefromPlug(relased_node, victim_plugid);
+        }
+    }
+    pau_vector_destroy(nodes_to_release);
     pau_vector_destroy(victim_allocatednodes_copy);
 }
 
