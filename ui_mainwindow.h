@@ -44,7 +44,7 @@ public:
     QPushButton *applyConfigButton;
     QLabel *label_4;
     QComboBox *pileComboBox;
-    QSpinBox *powerSpinBox;
+    QDoubleSpinBox *powerSpinBox;
     QLabel *label_9;
     QSpinBox *prioritySpinBox;
     QHBoxLayout *horizontalLayout_4;
@@ -140,12 +140,13 @@ public:
 
         verticalLayout->addWidget(pileComboBox);
 
-        powerSpinBox = new QSpinBox(centralwidget);
+        powerSpinBox = new QDoubleSpinBox(centralwidget);
         powerSpinBox->setObjectName(QString::fromUtf8("powerSpinBox"));
-
-        powerSpinBox->setMinimum(1);
-        powerSpinBox->setMaximum(2000);
-        powerSpinBox->setValue(40);
+        powerSpinBox->setDecimals(1);
+        powerSpinBox->setMinimum(0.5);
+        powerSpinBox->setMaximum(2000.0);
+        powerSpinBox->setSingleStep(0.5);
+        powerSpinBox->setValue(40.0);
 
         verticalLayout->addWidget(powerSpinBox);
 

@@ -177,28 +177,30 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
     {
     case SENARIO_SUBSIDY:
     {
-        bool lower_nodeid_alpha = plug_allocated_contain_node(plugid, nodeid - NODES_MAX_ENCIRCLE);
-        bool lower_nodeid_beta = plug_allocated_contain_node(plugid, nodeid - NODES_MAX_ENCIRCLE / 2);
+        ID_TYPE lower_alpha = get_neighbor_lower_alpha(nodeid);
+        ID_TYPE lower_beta = get_neighbor_lower_beta(nodeid);
+        bool lower_alpha_atlist = plug_allocated_contain_node(plugid, lower_alpha);
+        bool lower_beta_atlist = plug_allocated_contain_node(plugid, lower_beta);
         score += WEIGHT_6 * (get_node_chargingplugid(nodeid) > ID_VAIN ? 0 : 1);
-        score += WEIGHT_5 * (lower_nodeid_alpha ? 1 : 0);
-        score += WEIGHT_5 * (lower_nodeid_beta ? 1 : 0);
+        score += WEIGHT_5 * (lower_alpha_atlist ? 1 : 0);
+        score += WEIGHT_5 * (lower_beta_atlist ? 1 : 0);
         if (have_plug_occupied_matrixnode(plugid))
         {
-            score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(nodeid - NODES_MAX_ENCIRCLE) ? 1 : 0);
-            score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(nodeid - NODES_MAX_ENCIRCLE / 2) ? 1 : 0);
+            score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(lower_alpha) ? 1 : 0);
+            score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(lower_beta) ? 1 : 0);
         }
         if (WEIGHT_5 + WEIGHT_6 <= score)
         {
             ID_TYPE connected_nodeid = get_plug_connectednode(plugid);
 
             int hops_dist = 0;
-            if (lower_nodeid_alpha)
+            if (lower_alpha_atlist)
             {
-                hops_dist = get_hops_occupied(connected_nodeid, nodeid - NODES_MAX_ENCIRCLE, plugid);
+                hops_dist = get_hops_occupied(connected_nodeid, lower_alpha, plugid);
             }
-            if (lower_nodeid_beta)
+            if (lower_beta_atlist)
             {
-                hops_dist = get_hops_occupied(connected_nodeid, nodeid - NODES_MAX_ENCIRCLE / 2, plugid);
+                hops_dist = get_hops_occupied(connected_nodeid, lower_beta, plugid);
             }
             score += WEIGHT_2 * (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - hops_dist);
         }
@@ -313,6 +315,13 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
     }
     case SENARIO_SHARING:
     {
+        return score;
+    }
+    case SENARIO_MATRICE:
+    {
+        score = WEIGHT_1 * (get_plug_chargingmodules_cnt(plugid));
+        score += WEIGHT_3 * (get_plug_shortage(plugid));
+        return score;
     }
     default:
         return 0;

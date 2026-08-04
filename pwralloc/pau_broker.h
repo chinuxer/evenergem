@@ -23,7 +23,7 @@ extern "C"
 #define MAX_MODULES_PER_NODE 3
 #define RATED_PWR_PER_MODULE 625
 
-#define SIZING_TOLERANCE 1 * 10 // 2kW  匹配模块个数的容差 如果模块RATED_PWR_PER_MODULE是40kW 则79kW匹配2模块 80kW匹配3模块
+#define SIZING_TOLERANCE 5 // 0.5kW  匹配模块个数的容差 如果模块RATED_PWR_PER_MODULE是40kW 则80kW匹配2模块 80.5kW匹配3模块
     typedef enum
     {
         FullMatrix,

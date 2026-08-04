@@ -39,6 +39,22 @@ static ID_TYPE get_neighbor_upper(ID_TYPE nodeid)
     nodeid += NODES_MAX_ENCIRCLE;
     return nodeid > NODE_MAX ? nodeid - NODES_MAX_ENCIRCLE / 2 : nodeid;
 }
+ID_TYPE get_neighbor_lower_alpha(ID_TYPE nodeid)
+{
+    if (ASSERT_NODE_ID_ENCIRCLE(nodeid))
+    {
+        return ID_VAIN;
+    }
+    return nodeid - NODES_MAX_ENCIRCLE;
+}
+ID_TYPE get_neighbor_lower_beta(ID_TYPE nodeid)
+{
+    if (ASSERT_NODE_ID_ENCIRCLE(nodeid))
+    {
+        return ID_VAIN;
+    }
+    return nodeid - NODES_MAX_ENCIRCLE / 2;
+}
 
 void get_neighbors(ID_TYPE nodeid, ID_TYPE *neighbors)
 {
@@ -120,7 +136,7 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
     // 收集所有候选边
 
     size_t candidateCnt = 0;
-    pau_printf("plug%d encircle nodes:", pplug->id);
+
     PAU_VECTOR_FOREACH(node, pplug->allocatedNodes)
     {
         if (node > NODES_MAX_ENCIRCLE)
@@ -132,7 +148,7 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
         {
             continue;
         }
-        pau_printf("%d ", node);
+
         // 左邻（环形）
         ID_TYPE left = get_neighbor_left(node);
         if (pau_vector_contains(pplug->allocatedNodes, left))
@@ -154,7 +170,7 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
             add_candidate_edge(&candidateCnt, opp, node, true);
         }
     }
-    pau_printf("\r\n");
+
     // 并查集初始化
 
     clear_parent();
@@ -181,7 +197,7 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
             c->isClosed = false;
         }
     }
-    pau_printf("plug %d close encircle:", pplug->id);
+
     //  优先闭合环形边
     for (int i = 0; i < candidateCnt; i++)
     {
@@ -200,7 +216,7 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
                     (c->node1 == e.v && c->node2 == e.u))
                 {
                     c->isClosed = true;
-                    pau_printf("%d ", c->id);
+
                     break;
                 }
             }
@@ -225,13 +241,13 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
                     (c->node1 == e.v && c->node2 == e.u))
                 {
                     c->isClosed = true;
-                    pau_printf("%d ", c->id);
+
                     break;
                 }
             }
         }
     }
-    pau_printf("\r\n");
+
     for (int i = NODES_MAX_ENCIRCLE + 1; i <= 2 * NODES_MAX_ENCIRCLE; i++)
     {
         struct Alloc_contactorObj *c = refer_Contactor_Extracted(i);
@@ -318,7 +334,7 @@ static void semi_matrix_contactor_update(struct Alloc_plugObj *pplug)
     }
     int maxcontactor_nbr = 5 * NODES_MAX_ENCIRCLE / 2;
     maxcontactor_nbr = CONTACTOR_MAX - maxcontactor_nbr > 0 ? CONTACTOR_MAX - maxcontactor_nbr : 0;
-    pau_printf("plug%d close excircle", pplug->id);
+
     // 遍历所有接触器，判断是否闭合
     for (size_t i = NODES_MAX_ENCIRCLE * 2 + maxcontactor_nbr + 1; i <= CONTACTOR_MAX; i++)
     {
@@ -335,7 +351,7 @@ static void semi_matrix_contactor_update(struct Alloc_plugObj *pplug)
             continue;
         }
         c->isClosed = true;
-        pau_printf(" %d", c->id);
+
         pau_vector_append(avatar_nodes_collection, c->node1);
         struct Alloc_nodeObj *alpha = refer_Node_Extracted(nodeid_alpha);
         struct Alloc_nodeObj *beta = refer_Node_Extracted(nodeid_beta);
@@ -390,9 +406,7 @@ static void semi_matrix_contactor_update(struct Alloc_plugObj *pplug)
             continue;
         }
         pcontactor->isClosed = true;
-        pau_printf(" %d", pcontactor->id);
     }
-    pau_printf("\r\n");
     pau_vector_destroy(avatar_nodes_collection);
 }
 void updateContactorStates(ID_TYPE plugid, ID_TYPE nodeid)
@@ -687,16 +701,16 @@ static void pullout_further_nodes(ID_TYPE nodeid)
     {
         return;
     }
-    pau_printf("allocated node list ");
+
     PAU_VECTOR_FOREACH(allocated_nodeid, pplug->allocatedNodes) // 遍历节点所属桩已分配的节点
     {
-        pau_printf("%d ", allocated_nodeid);
+
         if (is_furthernode_pathself(pnode->plug_id, nodeid, allocated_nodeid)) // 如果节点所属桩已分配的节点到当前移除节点的跳数等于各自到基直连节点的差值
         {
             pau_vector_append(releasenode_list, allocated_nodeid); // 找到所有跳数大于hops_compared的节点
         }
     }
-    pau_printf("\r\n");
+
     PAU_VECTOR_FOREACH(releasenodeid, releasenode_list)
     {
         pull_NodefromPlug(releasenodeid, pplug->id); // 释放plugid所连接的节点中所有大于hops_compared的节点
@@ -707,7 +721,7 @@ static void pullout_further_nodes(ID_TYPE nodeid)
 }
 static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t quota)
 {
-    if (!ASSERT_PLUG_ID(plugid) || !ASSERT_NODE_ID_ENCIRCLE(startid))
+    1.0 if (!ASSERT_PLUG_ID(plugid) || !ASSERT_NODE_ID_ENCIRCLE(startid))
     {
         return ID_VAIN;
     }
@@ -722,8 +736,8 @@ static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t qu
     for (int nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
     {
         size_t score = makeScore(SENARIO_ACQUIRE, quota, plugid, 1, nodeid, 1);
-        pau_printf("[%02d]%d \r\n", nodeid, score);
-        // 遍历节点的每个邻居节点
+        // pau_printf("[%02d]%d \r\n", nodeid, score);
+        //  遍历节点的每个邻居节点
         pau_vector_set(scorelist, nodeid, score);
     }
 
@@ -849,7 +863,93 @@ static bool isConnectedNode(ID_TYPE nodeid)
     }
     return false;
 }
-static bool idlenodes_donatio(ID_TYPE plugid)
+static int get_neighbors_occupied(ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID_ENCIRCLE(nodeid))
+    {
+        return 4;
+    }
+    ID_TYPE neighbor[3];
+    neighbor[0] = get_neighbor_left(nodeid);
+    neighbor[1] = get_neighbor_right(nodeid);
+    neighbor[2] = get_neighbor_diagonal(nodeid);
+    int cnt = 0;
+    for (int i = 0; i < 3; i++)
+    {
+        if (neighbor[i] != ID_VAIN && refer_Node_Extracted(neighbor[i])->plug_id != ID_VAIN)
+        {
+            cnt++;
+        }
+    }
+    return cnt;
+}
+static bool idlenodes_semimatrix_donatio(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return false;
+    }
+    if (!ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
+    {
+        return false;
+    }
+    bool ret = false;
+    for (ID_TYPE nodeid = NODES_MAX_ENCIRCLE + 1; nodeid <= NODE_MAX; nodeid++)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        if (pnode->plug_id > ID_VAIN)
+        {
+            continue;
+        }
+        ID_TYPE lower_alpha = get_neighbor_lower_alpha(nodeid);
+        ID_TYPE lower_beta = get_neighbor_lower_beta(nodeid);
+        ID_TYPE plugid_alpha = refer_Node_Extracted(lower_alpha)->plug_id;
+        int shortage_alpha = ID_VAIN != plugid_alpha ? get_plug_shortage(plugid_alpha) : 0;
+        ID_TYPE plugid_beta = refer_Node_Extracted(lower_beta)->plug_id;
+        int shortage_beta = ID_VAIN != plugid_beta ? get_plug_shortage(plugid_beta) : 0;
+        ID_TYPE successor = (int)(shortage_alpha > 0 | shortage_beta > 0) * ((shortage_alpha > shortage_beta) ? plugid_alpha : plugid_beta);
+        if (ID_VAIN == successor)
+        {
+            continue;
+        }
+
+        push_NodetoPlug(nodeid, successor);
+        refer_Plug_Extracted(successor)->refresh = true;
+        update_plug_shortage_power(successor);
+        ret = true;
+    }
+    int optimal_score = 0;
+    ID_TYPE optimal_plug = ID_VAIN;
+    ID_TYPE idle_node = ID_VAIN;
+    for (ID_TYPE nodeid = NODES_MAX_ENCIRCLE + 1; nodeid <= NODE_MAX; nodeid++)
+    {
+
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        if (pnode->plug_id > ID_VAIN)
+        {
+            size_t score = makeScore(SENARIO_MATRICE, 0, pnode->plug_id, 1, 1, 1);
+
+            if (score >= WEIGHT_3 && score > optimal_score)
+            {
+                optimal_score = score;
+                optimal_plug = pnode->plug_id;
+            }
+        }
+        else
+        {
+            idle_node = nodeid;
+        }
+    }
+    if (optimal_plug > ID_VAIN && idle_node > ID_VAIN)
+    {
+        push_NodetoPlug(idle_node, optimal_plug);
+        refer_Plug_Extracted(optimal_plug)->refresh = true;
+        update_plug_shortage_power(optimal_plug);
+        ret = true;
+    }
+    return ret;
+}
+static bool idlenodes_encircle_donatio(ID_TYPE plugid)
 {
     PAU_Vector *idlenode_list = pau_vector_create(NODES_MAX_ENCIRCLE);
     if (NULL == idlenode_list)
@@ -868,11 +968,20 @@ static bool idlenodes_donatio(ID_TYPE plugid)
     for (ID_TYPE nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
     {
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        if (pnode->plug_id == ID_VAIN && !pau_vector_contains(idlenode_list, nodeid) && get_neighbors_occupied(nodeid) < 2)
+        {
+            pau_vector_append(idlenode_list, nodeid);
+        }
+    }
+    for (ID_TYPE nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
         if (pnode->plug_id == ID_VAIN && !pau_vector_contains(idlenode_list, nodeid))
         {
             pau_vector_append(idlenode_list, nodeid);
         }
     }
+    // 按照每个节点的三个邻居节点中被occupied的个数来排序
 
     bool ret = false;
     PAU_VECTOR_FOREACH(idlenode, idlenode_list)
@@ -917,7 +1026,7 @@ static bool idlenodes_donatio(ID_TYPE plugid)
     pau_vector_destroy(idlenode_list);
     return ret;
 }
-static bool transferPower(ID_TYPE plugid)
+static bool transferPower(ID_TYPE plugid, bool (*func)(ID_TYPE))
 {
     if (!ASSERT_PLUG_ID(plugid))
     {
@@ -926,7 +1035,7 @@ static bool transferPower(ID_TYPE plugid)
     int loop_guard = 0;
     while (loop_guard < NODES_MAX_ENCIRCLE)
     {
-        bool res = idlenodes_donatio(plugid);
+        bool res = func(plugid);
         if (!res)
         {
             break;
@@ -935,6 +1044,7 @@ static bool transferPower(ID_TYPE plugid)
     }
     return (loop_guard > 0);
 }
+
 static ID_TYPE ana_katabatic_flow(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
@@ -1068,7 +1178,8 @@ static void cutoff_root_node(struct Alloc_plugObj *pplug,
     update_plug_shortage_power(plug_victim);
     push_NodetoPlug(pplug->connectedNode, plug_intruder);
     update_plug_shortage_power(plug_intruder);
-    transferPower(plug_intruder);
+    transferPower(plug_intruder, idlenodes_encircle_donatio);
+    transferPower(plug_intruder, idlenodes_semimatrix_donatio);
 }
 bool have_plug_occupied_matrixnode(ID_TYPE plugid)
 {
@@ -1245,7 +1356,8 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
 
         pau_vector_clear(pplug->allocatedNodes);
         pau_vector_destroy(allocatedNodes_copy);
-        transferPower(plugid);
+        transferPower(plugid, idlenodes_encircle_donatio);
+        transferPower(plugid, idlenodes_semimatrix_donatio);
         return true;
     }
     pplug->requiredPower = requiredPower;
@@ -1273,7 +1385,8 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
         }
         update_plug_shortage_power(plugid);
     }
-    transferPower(plugid);
+    transferPower(plugid, idlenodes_encircle_donatio);
+    transferPower(plugid, idlenodes_semimatrix_donatio);
     return res;
 }
 static inline int flowmap_cmp(const FlowMap *a, const FlowMap *b)

@@ -212,16 +212,28 @@ int find(int x)
 {
     int root = x;
     // 找根
+    int loop_guardian = MAXNODES_MEM_LMT;
     while (pconfig_graph->parent[root] != root)
     {
         root = pconfig_graph->parent[root];
+        if (loop_guardian-- <= 0)
+        {
+            pau_printf("ERROR: Loop detected in union-find structure\r\n");
+            break;
+        }
     }
     // 路径压缩（所有节点直接指向根）
+    loop_guardian = MAXNODES_MEM_LMT;
     while (pconfig_graph->parent[x] != root)
     {
         int next = pconfig_graph->parent[x];
         pconfig_graph->parent[x] = root;
         x = next;
+        if (loop_guardian-- <= 0)
+        {
+            pau_printf("ERROR: Loop detected in union-find structure\r\n");
+            break;
+        }
     }
     return root;
 }

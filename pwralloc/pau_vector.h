@@ -43,7 +43,7 @@ typedef struct
 // 创建向量
 PAU_Vector *pau_vector_create(size_t init_capacity);
 // 复制PAU_Vector
-PAU_Vector *pau_vector_copy(PAU_Vector *vec);
+PAU_Vector *pau_vector_clone(PAU_Vector *vec);
 // 获取元素个数(对应QVector::size())
 size_t pau_vector_size(PAU_Vector *vec);
 // 尾部追加元素

@@ -22,6 +22,7 @@ enum Senario
     SENARIO_ACQUIRE,
     SENARIO_RELEASE,
     SENARIO_SUBSIDY,
+    SENARIO_MATRICE
 
 };
 typedef struct
@@ -36,6 +37,8 @@ enum METABOLIN
 };
 
 // union PCU_RawData retriver_PCU_RawData(ID_TYPE id, PCURawData data_type);
+ID_TYPE get_neighbor_lower_alpha(ID_TYPE nodeid);
+ID_TYPE get_neighbor_lower_beta(ID_TYPE nodeid);
 size_t get_plug_chargingnodes_cnt(ID_TYPE plugid);
 size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighbor_plugid, ID_TYPE nodeid, ID_TYPE neighbor_nodeid);
 size_t get_plug_requiredPower(ID_TYPE plugid);
