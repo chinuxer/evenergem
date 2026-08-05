@@ -46,7 +46,7 @@ PRIOR get_plug_priority(ID_TYPE plugid);
 void set_plug_priority(ID_TYPE plugid, PRIOR priority);
 size_t get_plug_allocated_cnt(ID_TYPE plugid);
 void clr_plug_allocated_cnt(ID_TYPE plugid);
-size_t get_plug_chargingmodules_cnt(ID_TYPE plugid);
+
 size_t *get_plug_hysteresisCnt(ID_TYPE plugid);
 ID_TYPE get_plug_connectednode(ID_TYPE plugid);
 

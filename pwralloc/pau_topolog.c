@@ -721,7 +721,7 @@ static void pullout_further_nodes(ID_TYPE nodeid)
 }
 static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t quota)
 {
-    1.0 if (!ASSERT_PLUG_ID(plugid) || !ASSERT_NODE_ID_ENCIRCLE(startid))
+    if (!ASSERT_PLUG_ID(plugid) || !ASSERT_NODE_ID_ENCIRCLE(startid))
     {
         return ID_VAIN;
     }
@@ -787,13 +787,219 @@ static int find_euelect_node_away(ID_TYPE plugid, ID_TYPE startid, size_t quota)
     return max_index; // 返回最大值的索引，如果没找到则返回-1
 }
 
+static bool assert_exclusive_babel(ID_TYPE avatar, ID_TYPE babel_plug)
+{
+    if (!ASSERT_NODE_ID(avatar) || !ASSERT_PLUG_ID(babel_plug))
+    {
+        return false;
+    }
+    for (ID_TYPE nodeid = NODES_MAX_ENCIRCLE + 1; nodeid <= NODE_MAX; nodeid++)
+    {
+        if (nodeid == avatar)
+        {
+            continue;
+        }
+        if (refer_Node_Extracted(nodeid)->plug_id != babel_plug)
+        {
+            continue;
+        }
+        ID_TYPE lowernodeid_alpha = get_neighbor_lower_alpha(nodeid);
+        ID_TYPE lowernodeid_beta = get_neighbor_lower_beta(nodeid);
+        if (refer_Node_Extracted(lowernodeid_alpha)->plug_id == babel_plug)
+        {
+            return false;
+        }
+        if (refer_Node_Extracted(lowernodeid_beta)->plug_id == babel_plug)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+static bool reactive_tuning_encircle(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return false;
+    }
+    // 1.先收集所有线环上能获取到的节点的所属充电桩plugid
+    PAU_Vector *plugs_shovedover = pau_vector_create(PAU_VECTOR_DEFAULT_CAPACITY);
+    PAU_Vector *nodes_shovedover = pau_vector_create(PAU_VECTOR_DEFAULT_CAPACITY);
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
+    {
+        if (!ASSERT_NODE_ID_ENCIRCLE(nodeid))
+        {
+            continue;
+        }
+        ID_TYPE node_neighbors[3] = {ID_VAIN, ID_VAIN, ID_VAIN};
+        get_neighbors(nodeid, node_neighbors);
+        for (int i = 0; i < 3; i++)
+        {
+            ID_TYPE neighborid = node_neighbors[i];
+            struct Alloc_nodeObj *pneighbor = refer_Node_Extracted(neighborid);
+            if (ID_VAIN < pneighbor->plug_id && !pau_vector_contains(plugs_shovedover, pneighbor->plug_id))
+            {
+                if (pneighbor->plug_id == plugid)
+                {
+                    continue;
+                }
+                if (neighborid == get_plug_connectednode(pneighbor->plug_id))
+                {
+                    continue;
+                }
+                if (1 >= get_plug_chargingnodes_cnt(pneighbor->plug_id))
+                {
+                    continue;
+                }
+                pau_vector_append(nodes_shovedover, neighborid);
+                pau_vector_append(plugs_shovedover, pneighbor->plug_id);
+            }
+        }
+    }
+
+    ID_TYPE plugid_shovedover = ID_VAIN;
+    ID_TYPE nodeid_replacement = ID_VAIN;
+    // 2.遍历所有线环上的空闲节点,如果这个空闲点有邻接点在被收集到的充电桩充电
+    for (ID_TYPE nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        if (ID_VAIN < pnode->plug_id) // NODE_OUTORDER和NODE_IDLEFREE状态都可以
+        {
+            continue;
+        }
+        ID_TYPE node_neighbors[3] = {ID_VAIN, ID_VAIN, ID_VAIN};
+        get_neighbors(nodeid, node_neighbors);
+        for (int i = 0; i < 3; i++)
+        {
+            struct Alloc_nodeObj *pneighbor = refer_Node_Extracted(node_neighbors[i]);
+            if (ID_VAIN < pneighbor->plug_id && pau_vector_contains(plugs_shovedover, pneighbor->plug_id))
+            {
+                if (pneighbor->pseudocycledon)
+                {
+                    continue;
+                }
+
+                plugid_shovedover = pneighbor->plug_id;
+                nodeid_replacement = nodeid;
+                break;
+            }
+        }
+        if (plugid_shovedover != ID_VAIN && nodeid_replacement != ID_VAIN)
+        {
+            break;
+        }
+    }
+    // 3.在可抢占的nodeid_replacement集合中找到被占plugid是plugid_shovedover的节点
+    if (ID_VAIN == plugid_shovedover || ID_VAIN == nodeid_replacement)
+    {
+        pau_vector_destroy(plugs_shovedover);
+        pau_vector_destroy(nodes_shovedover);
+        return false;
+    }
+    bool stop = false;
+    PAU_VECTOR_FOREACH_BREAK(nodeid, nodes_shovedover, stop)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        if (pnode->plug_id == plugid_shovedover)
+        {
+            ID_TYPE recover_locked = get_locked(nodeid);
+            set_locked(plugid, nodeid);
+            set_locked(plugid_shovedover, nodeid_replacement);
+            ID_TYPE connectedNode_shovedover = refer_Plug_Extracted(plugid_shovedover)->connectedNode;
+            hops_refresh(connectedNode_shovedover, plugid_shovedover);
+            int hops = get_hops_occupied(connectedNode_shovedover, nodeid_replacement, plugid_shovedover);
+            set_locked(recover_locked, nodeid);
+            set_locked(0, nodeid_replacement);
+
+            if (0 >= hops)
+            {
+                pau_log_printf("[PAU] reactive_tuning_encircle: plugid %d replace node%d of plug%d with free node %d rehearsal failed!!!\r\n", plugid, nodeid, plugid_shovedover, nodeid_replacement);
+                continue;
+            }
+            push_NodetoPlug(nodeid_replacement, plugid_shovedover);
+            pull_NodefromPlug(nodeid, plugid_shovedover);
+            update_plug_shortage_power(plugid_shovedover);
+            refer_Plug_Extracted(plugid_shovedover)->refresh = true;
+            push_NodetoPlug(nodeid, plugid);
+            update_plug_shortage_power(plugid);
+            refer_Plug_Extracted(plugid)->refresh = true;
+            plugid_shovedover = ID_VAIN;
+            stop = true;
+            break;
+        }
+    }
+    pau_vector_destroy(plugs_shovedover);
+    pau_vector_destroy(nodes_shovedover);
+    return (ID_VAIN == plugid_shovedover);
+}
+static bool reactive_tuning_semimatrix(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return false;
+    }
+    ID_TYPE nodeid_freeidle = ID_VAIN;
+    for (ID_TYPE nodeid = NODES_MAX_ENCIRCLE + 1; nodeid <= NODE_MAX; nodeid++)
+    {
+        if (ID_VAIN == refer_Node_Extracted(nodeid)->plug_id)
+        {
+            nodeid_freeidle = nodeid;
+            break;
+        }
+    }
+    if (ID_VAIN == nodeid_freeidle)
+    {
+        return false;
+    }
+    PAU_VECTOR_FOREACH(nodeid, refer_Plug_Extracted(plugid)->allocatedNodes)
+    {
+        ID_TYPE avatar_node = get_neighbor_upper(nodeid);
+        ID_TYPE plug_shovedover = get_node_chargingplugid(avatar_node);
+        if (ID_VAIN == nodeid_freeidle)
+        {
+            continue;
+        }
+        if (ID_VAIN == plug_shovedover)
+        {
+            continue;
+        }
+        if (plug_shovedover == plugid)
+        {
+            continue;
+        }
+        if (1 >= get_plug_allocated_cnt_excircle(plug_shovedover))
+        {
+            continue;
+        }
+        if (assert_exclusive_babel(avatar_node, plug_shovedover))
+        {
+            continue;
+        }
+        push_NodetoPlug(nodeid_freeidle, plug_shovedover);
+        pull_NodefromPlug(avatar_node, plug_shovedover);
+        push_NodetoPlug(avatar_node, plugid);
+        update_plug_shortage_power(plugid);
+        update_plug_shortage_power(plug_shovedover);
+        set_plug_refresh_flag(plugid, true);
+        set_plug_refresh_flag(plug_shovedover, true);
+        nodeid_freeidle = ID_VAIN;
+    }
+    return ID_VAIN == nodeid_freeidle;
+}
 bool occupiednodes_preempt(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
     {
         return false;
     }
-    return false;
+    bool res = false;
+    res = reactive_tuning_encircle(plugid);
+    if (!res)
+    {
+        res = reactive_tuning_semimatrix(plugid);
+    }
+    return res;
 }
 
 static bool node_common_operate(ID_TYPE plugid, bool opType)
@@ -1180,6 +1386,10 @@ static void cutoff_root_node(struct Alloc_plugObj *pplug,
     update_plug_shortage_power(plug_intruder);
     transferPower(plug_intruder, idlenodes_encircle_donatio);
     transferPower(plug_intruder, idlenodes_semimatrix_donatio);
+    if (PRIOR_ADHOC < refer_Plug_Extracted(plug_victim)->priority)
+    {
+        refer_Plug_Extracted(plug_intruder)->priority -= PRIOR_ADHOC;
+    }
 }
 bool have_plug_occupied_matrixnode(ID_TYPE plugid)
 {

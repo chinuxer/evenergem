@@ -1124,8 +1124,9 @@ void MainWindow::updateGraphics()
             {
                 // Format %3 as a float with 1 decimal place
                 // Assuming requiredPower is in units of 0.1kW, so divide by 10.0
+                size_t moduleCount = ::get_plug_chargingmodules_cnt(pile.pau_data->id);
                 QString labelText = QString("%1:%2 %3\n%4级")
-                                        .arg(pile.pau_data->allocatedNodes->size)
+                                        .arg(moduleCount)
                                         .arg(pile.pau_data->shortage)
                                         .arg(pile.pau_data->requiredPower / 10.0, 0, 'f', 1) // Float format, 1 decimal place
                                         .arg(pile.pau_data->priority);
@@ -1474,9 +1475,9 @@ void MainWindow::showAboutDialog()
 
     // 描述文字
     QLabel *descLabel = new QLabel(tr(
-        "\n直流充电桩环形拓扑功率分配演示系统\n"
-        "用于教学、开发思路验证及图论算法研究\n\n"
-        "本软件仅供非商业用途使用，不作为开发者所在公司售卖产品\n详情见免责声明"));
+        "\n直流充电桩功率分配演示系统\n"
+        "用于教学、开发思路验证、图论算法研究及非营利目的培训\n\n"
+        "本软件仅供非商业用途使用，不作为开发者所在公司产品售卖\n详情见免责声明"));
     descLabel->setAlignment(Qt::AlignCenter);
     descLabel->setWordWrap(true);
     layout->addWidget(descLabel);

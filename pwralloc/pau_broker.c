@@ -537,7 +537,7 @@ ID_TYPE get_plug_connectednode(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
     {
-        return NODE_MAX;
+        return ID_VAIN;
     }
     return refer_Plug_Extracted(plugid)->connectedNode;
 }

@@ -37,6 +37,7 @@ extern "C"
         PRIOR_VIP,      // 不会被PRIOR_SVIP抢褫夺功率配额,会分摊PRIOR_BASE的功率配额
         PRIOR_SVIP,     // 会褫夺PRIOR_BASE的功率配额
         PRIOR_EXTREME,  // 会褫夺所有非PRIO_EXTREME功率配额
+        PRIOR_ADHOC=0x10 // 临时调优，特殊情况开绿灯，原优先级调为最高
     } PRIOR;
     typedef enum
     {
