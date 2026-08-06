@@ -222,7 +222,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         shortage = shortage < 0 ? 0 : shortage;
         shortage = shortage >= WEIGHT_HIERARCHY ? WEIGHT_HIERARCHY - 1 : shortage;
         score += WEIGHT_4 * (shortage % WEIGHT_HIERARCHY);
-        score += WEIGHT_5 * (PRIOR_ADHOC < get_node_priority(neighbor_plugid) ? 1 : 0);
+        score += WEIGHT_5 * (PRIOR_ADHOC < get_plug_priority(neighbor_plugid) && 0 < shortage ? 1 : 0);
         score = (plugid == neighbor_plugid) ? 0 : score; // 如果邻居节点所属充电桩与当前充电桩相同,则得分为0,不进行继承
         score = is_node_pseudocycledon(neighbor_nodeid) ? 0 : score;
         return score;
@@ -322,7 +322,10 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
     {
         score = WEIGHT_1 * (get_plug_chargingnodes_cnt(plugid));
         score += WEIGHT_3 * (get_plug_shortage(plugid));
-        score += WEIGHT_5 * (PRIOR_ADHOC < get_plug_priority(plugid) ? 1 : 0);
+        if (score >= WEIGHT_3)
+        {
+            score += WEIGHT_5 * (PRIOR_ADHOC < get_plug_priority(plugid) ? 1 : 0);
+        }
         return score;
     }
     default:

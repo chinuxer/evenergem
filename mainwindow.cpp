@@ -852,7 +852,7 @@ void MainWindow::setupGraphicsScene()
             // pen.setDashPattern({3, 5});
             // pen.setCapStyle(Qt::RoundCap);
             pen.setBrush(grad);
-            pen.setWidth(2); // 粗线才能看清渐变
+            pen.setWidth(3); // 粗线才能看清渐变
             pen.setCapStyle(Qt::RoundCap);
             connLine->setPen(pen);
             connLine->setToolTip(QString("接触器编号 %1, 4%2")
@@ -1186,7 +1186,7 @@ void MainWindow::updateGraphics()
 
                 QPen pen;
                 pen.setBrush(grad);
-                pen.setWidth(2);
+                pen.setWidth(3);
                 pen.setStyle(Qt::SolidLine);
                 pen.setCapStyle(Qt::RoundCap);
                 m_koinonItems[i]->setPen(pen);
@@ -1458,7 +1458,7 @@ void MainWindow::showAboutDialog()
     titleLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(titleLabel);
 
-    QLabel *versionLabel = new QLabel(tr("版本：1.0.5"));
+    QLabel *versionLabel = new QLabel(tr("版本：1.0.6"));
     versionLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(versionLabel);
 
@@ -1476,7 +1476,7 @@ void MainWindow::showAboutDialog()
     // 描述文字
     QLabel *descLabel = new QLabel(tr(
         "\n直流充电桩功率分配演示系统\n"
-        "用于教学、开发思路验证、图论算法研究及非营利目的培训\n\n"
+        "用于教学演示、图论算法研究、电气系统可行性及研发思路验证\n\n"
         "本软件仅供非商业用途使用，不作为开发者所在公司产品售卖\n详情见免责声明"));
     descLabel->setAlignment(Qt::AlignCenter);
     descLabel->setWordWrap(true);
@@ -1741,6 +1741,25 @@ void MainWindow::onTelnetConnected()
     if (!m_logWindow)
     {
         m_logWindow = new LogWindow(this);
+        // 设置拓扑信息用于文件名
+        const auto &config = m_topology->getConfig();
+        QString topoType;
+        switch (config.topotype)
+        {
+        case FullMatrix:
+            topoType = "FullMatrix";
+            break;
+        case CakraWheel:
+            topoType = "CakraWheel";
+            break;
+        case SemiHybrid:
+            topoType = "SemiHybrid";
+            break;
+        default:
+            topoType = "Unknown";
+            break;
+        }
+        m_logWindow->setTopologyInfo(topoType, config.nodeCount, config.pileCount);
         m_logWindow->show();
     }
     // 禁用右侧所有控制按钮

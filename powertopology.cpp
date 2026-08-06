@@ -179,7 +179,7 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
     if (requiredPower > totalpower_limit)
     {
 
-        pau_log_printf("请求功率超出范围 %d", requiredPower);
+        pau_printf("请求功率超出范围 %d", requiredPower);
         requiredPower = totalpower_limit;
         QMessageBox::warning(
             nullptr,

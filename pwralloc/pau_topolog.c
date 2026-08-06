@@ -717,6 +717,7 @@ static void pullout_further_nodes(ID_TYPE nodeid)
     }
 
     pplug->refresh = true;
+    pplug->priority += PRIOR_ADHOC; // 被切断的节点所属充电桩优先级提高以便在之后的分配中恢复
     pau_vector_destroy(releasenode_list);
 }
 static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t quota)
@@ -914,7 +915,7 @@ static bool reactive_tuning_encircle(ID_TYPE plugid)
 
             if (0 >= hops)
             {
-                pau_log_printf("[PAU] reactive_tuning_encircle: plugid %d replace node%d of plug%d with free node %d rehearsal failed!!!\r\n", plugid, nodeid, plugid_shovedover, nodeid_replacement);
+                pau_printf("[PAU] reactive_tuning_encircle: plugid %d replace node%d of plug%d with free node %d rehearsal failed!!!\r\n", plugid, nodeid, plugid_shovedover, nodeid_replacement);
                 continue;
             }
             push_NodetoPlug(nodeid_replacement, plugid_shovedover);
@@ -1388,7 +1389,7 @@ static void cutoff_root_node(struct Alloc_plugObj *pplug,
     transferPower(plug_intruder, idlenodes_semimatrix_donatio);
     if (PRIOR_ADHOC < refer_Plug_Extracted(plug_victim)->priority)
     {
-        refer_Plug_Extracted(plug_intruder)->priority -= PRIOR_ADHOC;
+        refer_Plug_Extracted(plug_victim)->priority -= PRIOR_ADHOC;
     }
 }
 bool have_plug_occupied_matrixnode(ID_TYPE plugid)
@@ -1507,7 +1508,7 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
     }
 
     /* ── 初始化 ── */
-    struct Alloc_nodeObj *pnode = refer_Node_Extracted(pplug->connectedNode);
+    struct Alloc_nodeObj *pconnectedNode = refer_Node_Extracted(pplug->connectedNode);
     pplug->requiredPower = requiredPower;
     update_plug_shortage_power(plugid);
 
@@ -1519,7 +1520,7 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
     /* ── cutoff connected node ── */
     pau_printf("[TACTIC] requestPower plugid:%d requiredpwr:%d shortage:%d\r\n",
                plugid, requiredPower, pplug->shortage);
-    cutoff_root_node(pplug, pnode);
+    cutoff_root_node(pplug, pconnectedNode);
 
     /* ── shortage meeting ── */
     pplug->state = PLUG_CHARGING;
