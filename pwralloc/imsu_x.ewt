@@ -2867,6 +2867,9 @@
         <name>$PROJ_DIR$\pau_broker.c</name>
     </file>
     <file>
+        <name>$PROJ_DIR$\pau_deploy.c</name>
+    </file>
+    <file>
         <name>$PROJ_DIR$\pau_directed.c</name>
     </file>
     <file>

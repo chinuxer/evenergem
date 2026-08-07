@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QTcpSocket>
 #include <QTimer>
-
+#include "pwralloc/pau_broker.h"
 class TelnetClient : public QObject
 {
     Q_OBJECT
@@ -20,6 +20,7 @@ signals:
     void disconnected();                     // 断开连接信号
     void rawLogReceived(const QString &log); // 原始日志（逐行，供窗口显示）
     void topologyStateReceived(int nodeCount, int pileCount,
+                               const QString &topologyType,
                                const QVector<int> &nodeOwners,
                                const QVector<bool> &contactorStates,
                                const QMap<int, QPair<int, int>> &chargingPiles); // 桩id -> (requiredPower, priority)

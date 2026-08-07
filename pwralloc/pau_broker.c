@@ -43,7 +43,7 @@ static void availablePwr_Init(struct Alloc_nodeObj *pnode, int rated_pwr)
 }
 static void modulesPerNode_Init(struct Alloc_nodeObj *pnode)
 {
-#if defined(__IAR_SYSTEMS_ICC__)
+#if defined(STM32F407xx)
 #include "module_config.h"
     if (pnode->id < 1 || pnode->id > (sizeof(module_nbr_map) / sizeof(module_nbr_map[0])))
     {
@@ -243,7 +243,7 @@ static void *create_FlexStruct_Array(size_t header_size, size_t element_size, si
     }
     // 元编程模版告知IAR编译器需要调用的函数地址，优化时尽量最近,跳转调用
 #define CONTEXT_EXPANDER_PROJ_GLOBAL(x) Alloc_##x##Array_Init,
-#if defined(__IAR_SYSTEMS_ICC__)
+#if defined(STM32F407xx)
 #pragma calls = VARIABLE_LIST_PENDING_EXPANDED
 #endif
     init_func(ptr, count);
@@ -275,7 +275,7 @@ bool database_building(TOPOTYPE topology, size_t nodes_num, size_t plugs_num)
         Nodes_varonstack += nodes_num / 2;
         Contactors_varonstack += factorial(nodes_num / 2);
     }
-
+    pau_printf("building database for topology %d, nodes=%d, plugs=%d contactors=%d\r\n", topology, Nodes_varonstack, Plugs_varonstack, Contactors_varonstack);
     VARIABLE_LIST_PENDING_EXPANDED
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
     TOPOLOGY_TYPE = topology;
@@ -557,14 +557,4 @@ bool is_node_pseudocycledon(ID_TYPE nodeid)
         return false;
     }
     return refer_Node_Extracted(nodeid)->pseudocycledon;
-}
-
-void recover_node_pseudocycledon(ID_TYPE plugid, ID_TYPE nodeid)
-{
-    if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid))
-    {
-        return;
-    }
-    refer_Node_Extracted(nodeid)->pseudocycledon = false;
-    set_locked(plugid, nodeid);
 }

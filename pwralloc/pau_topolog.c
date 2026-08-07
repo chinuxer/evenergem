@@ -1873,3 +1873,13 @@ bool set_node_availability(ID_TYPE node_id)
     }
     return res;
 }
+
+void recover_node_pseudocycledon(ID_TYPE plugid, ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid))
+    {
+        return;
+    }
+    refer_Node_Extracted(nodeid)->pseudocycledon = false;
+    set_locked(plugid, nodeid);
+}

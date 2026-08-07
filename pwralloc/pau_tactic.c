@@ -14,7 +14,7 @@ static void dec_str_to_hex_str(const char *dec_str, char *hex_str, int size)
     // 用传入的大小，不要用 sizeof！
     snprintf(hex_str, size, "%lX", num);
 }
-static void bin2hex_left_pad(const char *bin_str, char *hex_str)
+static void bin2hex_left_pad_(const char *bin_str, char *hex_str)
 {
     int len = strlen(bin_str);
     int hex_idx = 0;
@@ -49,6 +49,48 @@ static void bin2hex_left_pad(const char *bin_str, char *hex_str)
 
     hex_str[hex_idx] = '\0';
 }
+static void bin2hex_left_pad(const char *bin_str, char *hex_str)
+{
+    int len = strlen(bin_str);
+    int hex_idx = 0;
+    int val = 0;
+    int bit_count = 0;
+
+    // 从右到左每4位一组
+    for (int i = len - 1; i >= 0; i--)
+    {
+        int bit = bin_str[i] - '0';
+        val = val | (bit << bit_count);
+        bit_count++;
+
+        if (bit_count == 4)
+        {
+            hex_str[hex_idx++] = "0123456789ABCDEF"[val];
+            val = 0;
+            bit_count = 0;
+        }
+    }
+
+    // 处理最后不足4位的部分（从高位补0）
+    if (bit_count > 0)
+    {
+        hex_str[hex_idx++] = "0123456789ABCDEF"[val];
+    }
+
+    // 反转十六进制字符串（因为是从右到左构建的）
+    int start = 0;
+    int end = hex_idx - 1;
+    while (start < end)
+    {
+        char temp = hex_str[start];
+        hex_str[start] = hex_str[end];
+        hex_str[end] = temp;
+        start++;
+        end--;
+    }
+
+    hex_str[hex_idx] = '\0';
+}
 void print_outcomes(ID_TYPE plugid)
 {
 #if !defined(__IAR_SYSTEMS_ICC__)
@@ -61,14 +103,15 @@ void print_outcomes(ID_TYPE plugid)
     int offset = 0;
 
     // 1. Header
-    offset += snprintf(log_buffer + offset, sizeof(log_buffer) - offset, "$CYCLUS$");
+    offset += snprintf(log_buffer + offset, sizeof(log_buffer) - offset, EN_ARCHE_ALPHA);
 
-    // 2. System Counts <Nodes><Plugs>
-    offset += snprintf(log_buffer + offset, sizeof(log_buffer) - offset, "<%d><%d>", NODE_MAX, PLUG_MAX);
+    // 2. System Counts <Nodes><Plugs><topostyle>
 
+    offset += snprintf(log_buffer + offset, sizeof(log_buffer) - offset, "<%d><%d><%d>",
+                       NODE_MAX, PLUG_MAX, TOPOLOGY_TYPE);
     // 3. Node Allocation Map (Decimal String -> Hex)
     // Format: Each node gets 2 decimal digits. E.g., Node 1 -> Plug 1 -> "01"
-    char string_copie_stock[MAXNODES_MEM_LMT * 2 + 1] = {'\0'}; // Enough space for 2 digits per node + null
+    char string_copie_stock[MAXNODES_MEM_LMT * 5 + 1] = {'\0'}; // Enough space for 2 digits per node + null
 
     for (int i = 1; i <= NODE_MAX; i++)
     {
@@ -86,26 +129,6 @@ void print_outcomes(ID_TYPE plugid)
     // char node_hex_str[256];
     // dec_str_to_hex_str(string_copie_stock, node_hex_str, sizeof(node_hex_str));
     offset += snprintf(log_buffer + offset, sizeof(log_buffer) - offset, "(%s)", string_copie_stock);
-
-    // 4. Contactor State Map (Binary String -> Hex)
-    // Format: "Open=0, Closed=1" based on prompt "分为0合为1"
-    // Wait, prompt example: C1-0 C2-1 ... -> 01001101...
-    // If C1 is Closed, and bit is 0, then Closed=0.
-    // If C2 is Open, and bit is 1, then Open=1.
-    // This matches "He (Closed)=0, Fen (Open)=1".
-    // BUT prompt text says "分为0合为1" (Fen=0, He=1). This is a contradiction.
-    // Let's look at the example result: 4D00.
-    // Binary 0100 1101 0000 0000.
-    // Bits: C1=0, C2=1, C3=0, C4=0, C5=1, C6=1, C7=0, C8=1...
-    // Usually, most contactors are OPEN (0) in default state.
-    // If "Open=0", then most bits should be 0.
-    // If "Closed=1", then active contacts are 1.
-    // Let's assume the standard engineering logic: 0 = Open (False), 1 = Closed (True).
-    // And the prompt text "分为0合为1" might have been a typo for "合为1分0" or similar.
-    // HOWEVER, I must follow the prompt's explicit mapping if possible.
-    // Let's re-read carefully: "各接触器分合状态信息为各个节点的分合状态（分为0合为1）"
-    // This explicitly says: Open (Fen) = 0, Closed (He) = 1.
-    // So if isClosed is true, bit is 1. If false, bit is 0.
 
     memset(string_copie_stock, 0, sizeof(string_copie_stock));
 
@@ -129,7 +152,7 @@ void print_outcomes(ID_TYPE plugid)
     pau_printf("\r\n");
 
     // Convert Binary String to Hex
-    char cont_hex_str[12];
+    char cont_hex_str[64];
     bin2hex_left_pad(string_copie_stock, cont_hex_str); // Reuse buffer for hex string
 
     offset += sprintf(log_buffer + offset, "{%s}", cont_hex_str);
@@ -159,7 +182,7 @@ void print_outcomes(ID_TYPE plugid)
     }
 
     // 6. Footer
-    offset += sprintf(log_buffer + offset, "$SULCYC$");
+    offset += sprintf(log_buffer + offset, EPI_TELEI_OMEGA);
 
     // Print the result
     pau_printf("%s\r\n", log_buffer);
@@ -427,7 +450,7 @@ static float stable_Required_Current(float current, ID_TYPE plug_id)
     pdata->sample_current_pool[pdata->index++ % DEMAND_CURRENT_SAMPLENUM] = current;
     return (var_stablish_threshold == pdata->counter ? last_interpolated : 0.0f);
 }
-#if defined(__IAR_SYSTEMS_ICC__)
+#if defined(STM32F407xx)
 void available_power_update(void)
 {
     pau_printf("[PAU] available_power_update:");

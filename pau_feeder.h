@@ -22,12 +22,44 @@ extern "C"
 St_PolicyTargetResult gtarget_result[MAXNODES_MEM_LMT] = {0};
 #else
 extern St_PolicyTargetResult gtarget_result[MAXNODES_MEM_LMT];
-
-int get_contactor_pwrflow_dest(int contactorId)
+int get_contactor_pwrflow_dest(struct Alloc_contactorObj *pau_data, bool remoteMode)
 {
+    ID_TYPE contactorId = pau_data->id;
     if (contactorId < 1 || contactorId > CONTACTOR_MAX)
     {
         return -1;
+    }
+
+    if (remoteMode)
+    {
+        int chargerId1 = pau_data->node1;
+        chargerId1 = ::get_node_chargingplugid(chargerId1);
+        int chargerId2 = pau_data->node2;
+        if (chargerId2 > CONTACTOR_SPLICE_MULTIPLE)
+        {
+            ID_TYPE nodeid_alpha = pau_data->node2 / CONTACTOR_SPLICE_MULTIPLE;
+            ID_TYPE nodeid_beta = pau_data->node2 % CONTACTOR_SPLICE_MULTIPLE;
+            ID_TYPE plugid_alpha = ::get_node_chargingplugid(nodeid_alpha);
+            ID_TYPE plugid_beta = ::get_node_chargingplugid(nodeid_beta);
+            return (chargerId1 == plugid_alpha || chargerId1 == plugid_beta) ? chargerId1 : -1;
+        }
+        else
+        {
+            chargerId2 = ::get_node_chargingplugid(chargerId2);
+            // 确定使用哪个充电桩的颜色（优先使用节点1的充电桩）
+            if (chargerId1 == chargerId2)
+            {
+                return chargerId1;
+            }
+            else if (contactorId > NODES_MAX_ENCIRCLE && contactorId <= 2 * NODES_MAX_ENCIRCLE)
+            {
+
+                ID_TYPE uppernode = chargerId1 + NODES_MAX_ENCIRCLE;
+                uppernode = uppernode > NODE_MAX ? uppernode - NODES_MAX_ENCIRCLE / 2 : uppernode;
+                ID_TYPE plugid_avatar = ::get_node_chargingplugid(uppernode);
+                return (chargerId1 == plugid_avatar) ? plugid_avatar : -1;
+            }
+        }
     }
     if (ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX && contactorId <= 2 * NODES_MAX_ENCIRCLE && contactorId > 3 * NODES_MAX_ENCIRCLE / 2)
     {

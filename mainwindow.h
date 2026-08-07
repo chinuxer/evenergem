@@ -58,6 +58,7 @@ private slots:
     void onTelnetDisconnected();
     void onTelnetRawLog(const QString &log);
     void onExternalTopologyState(int nodeCount, int pileCount,
+                                 const QString &topologyType,
                                  const QVector<int> &nodeOwners,
                                  const QVector<bool> &contactorStates,
                                  const QMap<int, QPair<int, int>> &chargingPiles);

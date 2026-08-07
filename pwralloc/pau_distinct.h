@@ -3,7 +3,7 @@
 #include "pau_broker.h"
 
 #define MAXNODES_MEM_LMT PAU_VECTOR_DEFAULT_CAPACITY
-#if defined(__IAR_SYSTEMS_ICC__)
+#if defined(STM32F407xx)
 
 #include "infy_debug.h"
 #include "app_dc_port.h"
@@ -51,7 +51,7 @@ union PCU_RawData
 #define GET_PCU_RAWDATA(id, data, type) (retriver_PCU_RawData(id, data).type##_data)
 union PCU_RawData retriver_PCU_RawData(ID_TYPE id, PCURawData data_type);
 #else
-#define GET_PCU_RAWDATA(id, data, type)
+#define GET_PCU_RAWDATA(id, data, type) 0
 typedef struct
 {
     unsigned char u8PolicyTargetPowerNodeNum;

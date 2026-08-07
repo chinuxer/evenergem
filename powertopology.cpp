@@ -236,7 +236,12 @@ void SimpleTopology::releasePower(int pileId, int powerToRelease)
 
 void SimpleTopology::allocateNodeToPile(int nodeId, int pileId, bool emit_signal)
 {
-    if (nodeId < 1 || nodeId > m_nodes.size() ||
+    int nodemax = m_nodes.size();
+    if (SemiHybrid == m_config.topotype)
+    {
+        nodemax += m_matrixnodes.size();
+    }
+    if (nodeId < 1 || nodeId > nodemax ||
         pileId < 1 || pileId > m_piles.size())
     {
         qWarning() << "无效的节点或充电桩ID:" << nodeId << pileId;

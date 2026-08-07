@@ -284,15 +284,4 @@ bool graphconfig_Canaries_Twittering(void)
     return (pconfig_graph->front_canary == FRONT_MAGICWORD && pconfig_graph->rear_canary == REAR_MAGICWORD);
 }
 
-void dist_print(void)
-{
-    // 打印pconfig_graph->dist[]
 
-    pau_printf("[%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d]", pconfig_graph->dist[0], pconfig_graph->dist[1], pconfig_graph->dist[2], pconfig_graph->dist[3], pconfig_graph->dist[4], pconfig_graph->dist[5], pconfig_graph->dist[6], pconfig_graph->dist[7], pconfig_graph->dist[8], pconfig_graph->dist[9], pconfig_graph->dist[10], pconfig_graph->dist[11], pconfig_graph->dist[12], pconfig_graph->dist[13], pconfig_graph->dist[14], pconfig_graph->dist[15], pconfig_graph->dist[16], pconfig_graph->dist[17], pconfig_graph->dist[18], pconfig_graph->dist[19], pconfig_graph->dist[20]);
-}
-void lock_print(void)
-{
-    // 打印pconfig_graph->locked[]
-
-    pau_printf("[%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d]", pconfig_graph->locked[0], pconfig_graph->locked[1], pconfig_graph->locked[2], pconfig_graph->locked[3], pconfig_graph->locked[4], pconfig_graph->locked[5], pconfig_graph->locked[6], pconfig_graph->locked[7], pconfig_graph->locked[8], pconfig_graph->locked[9], pconfig_graph->locked[10], pconfig_graph->locked[11], pconfig_graph->locked[12], pconfig_graph->locked[13], pconfig_graph->locked[14], pconfig_graph->locked[15], pconfig_graph->locked[16], pconfig_graph->locked[17], pconfig_graph->locked[18], pconfig_graph->locked[19], pconfig_graph->locked[20]);
-}

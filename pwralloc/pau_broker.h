@@ -22,6 +22,8 @@ extern "C"
 
 #define MAX_MODULES_PER_NODE 3
 #define RATED_PWR_PER_MODULE 625
+#define EN_ARCHE_ALPHA "$CYCLUS$"
+#define EPI_TELEI_OMEGA "$SULCYC$"
 
 #define SIZING_TOLERANCE 5 // 0.5kW  匹配模块个数的容差 如果模块RATED_PWR_PER_MODULE是40kW 则80kW匹配2模块 80.5kW匹配3模块
     typedef enum
@@ -32,12 +34,12 @@ extern "C"
     } TOPOTYPE;
     typedef enum
     {
-        PRIOR_VAIN = 0, // 没有置优先级=枪没有在工作
-        PRIOR_BASE,     // 会被PRIOR_SVIP褫夺功率配额
-        PRIOR_VIP,      // 不会被PRIOR_SVIP抢褫夺功率配额,会分摊PRIOR_BASE的功率配额
-        PRIOR_SVIP,     // 会褫夺PRIOR_BASE的功率配额
-        PRIOR_EXTREME,  // 会褫夺所有非PRIO_EXTREME功率配额
-        PRIOR_ADHOC=0x10 // 临时调优，特殊情况开绿灯，原优先级调为最高
+        PRIOR_VAIN = 0,    // 没有置优先级=枪没有在工作
+        PRIOR_BASE,        // 会被PRIOR_SVIP褫夺功率配额
+        PRIOR_VIP,         // 不会被PRIOR_SVIP抢褫夺功率配额,会分摊PRIOR_BASE的功率配额
+        PRIOR_SVIP,        // 会褫夺PRIOR_BASE的功率配额
+        PRIOR_EXTREME,     // 会褫夺所有非PRIO_EXTREME功率配额
+        PRIOR_ADHOC = 0x10 // 临时调优，特殊情况开绿灯，原优先级调为最高
     } PRIOR;
     typedef enum
     {
@@ -65,7 +67,7 @@ extern "C"
     extern const unsigned char *const __PAU_CORE_HEAP_end__;
     extern const unsigned int __PAU_CORE_RAM_size__;
     extern const unsigned int __PAU_CORE_HEAP_size__;
-#if defined(__IAR_SYSTEMS_ICC__)
+#if defined(STM32F407xx)
 #define IN_PAU_RAM_SECTION __attribute__((section(".pau_ram_section"), aligned(4)))
 #define IN_PAU_HEAP_SECTION __attribute__((section(".pau_heap_section")))
 #define pau_printf(fmt, ...) d_printf("\033[33m" fmt "\033[0m", ##__VA_ARGS__)
@@ -73,7 +75,11 @@ extern "C"
 #define IN_PAU_RAM_SECTION
 #define IN_PAU_HEAP_SECTION
 void pau_log_printf(const char *fmt, ...);
+#if defined(QTDEMOD_NODES_CAPACITY)
 #define pau_printf(fmt, ...) pau_log_printf("\033[33m" fmt "\033[0m", ##__VA_ARGS__)
+#else
+#define pau_printf(fmt, ...) printf("\033[33m" fmt "\033[0m", ##__VA_ARGS__)
+#endif
 #endif
 #define IN_PCU_RAM_SECTION
 
@@ -114,7 +120,7 @@ void pau_log_printf(const char *fmt, ...);
         ID_TYPE id;
         PRIOR priority;        // 优先级 (1-4)
         PlugState state;       // 充电桩状态
-        ID_TYPE connectedNode; // 直接的节点ID
+        ID_TYPE connectedNode; // 直连的节点ID
         size_t requiredPower;  // 需求功率 (kW)
         int shortage;          // 需求欠额节点数
         bool refresh;

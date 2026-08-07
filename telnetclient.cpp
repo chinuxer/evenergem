@@ -1,4 +1,5 @@
 #include "telnetclient.h"
+#include "pwralloc/pau_broker.h"
 #include <QDebug>
 #include <QThread>
 #include <QMetaMethod>
@@ -167,20 +168,20 @@ static QVector<int> splitDecimalToInts(const QString &decimalStr, int expectedCo
 void TelnetClient::parseMessage(const QString &msg)
 {
     // 寻找 $CYCLUS$ ... $SULCYC$
-    int start = msg.indexOf("$CYCLUS$");
+    int start = msg.indexOf(EN_ARCHE_ALPHA);
     if (start == -1)
         return;
-    int contentStart = start + strlen("$CYCLUS$");
+    int contentStart = start + strlen(EN_ARCHE_ALPHA);
 
-    int end = msg.indexOf("$SULCYC$", contentStart);
+    int end = msg.indexOf(EPI_TELEI_OMEGA, contentStart);
     if (end == -1)
         return;
-   QString content = msg.mid(contentStart, end - contentStart).trimmed();
+    QString content = msg.mid(contentStart, end - contentStart).trimmed();
 
-    // 格式: <节点数><桩数>(节点所属充电桩十六进制){接触器状态十六进制}[桩信息1][桩信息2]...
-    // 示例: <8><8>(5CC985FBE5E1){4D00}[F4BA1][1E8AC1][5893C2]
-    QRegExp rx("<(\\d+)><(\\d+)>\\(([0-9A-Fa-f]+)\\)\\{([0-9A-Fa-f]+)\\}(.*)");
-    //  QRegExp rx("^<(\\d+)><(\\d+)>\\(([0-9]+)\\)\\{([0-9A-Fa-f]+)\\}(.*)$");
+    // 新格式: <节点数><桩数><拓扑类型>(节点所属充电桩十六进制){接触器状态十六进制}[桩信息1][桩信息2]...
+    // 示例: <8><8><1>(5CC985FBE5E1){4D00}[F4BA1][1E8AC1][5893C2]
+    QRegExp rx("<(\\d+)><(\\d+)><(\\d+)>\\(([0-9A-Fa-f]+)\\)\\{([0-9A-Fa-f]+)\\}(.*)");
+
     if (!rx.exactMatch(content))
     {
         qWarning() << "Invalid CYCLUS format:" << content;
@@ -188,10 +189,28 @@ void TelnetClient::parseMessage(const QString &msg)
     }
     int nodeCount = rx.cap(1).toInt();
     int pileCount = rx.cap(2).toInt();
-    QString nodeOwnersDec = rx.cap(3);
-    QString contactorHex = rx.cap(4);
-    QString rest = rx.cap(5); // 剩余部分包含多个 [hex]
+    int topologyType = rx.cap(3).toInt(); // 新增：解析拓扑类型
+    QString nodeOwnersDec = rx.cap(4);
+    QString contactorHex = rx.cap(5);
+    QString rest = rx.cap(6);
 
+    // 将拓扑类型转换为字符串
+    QString topologyStr;
+    switch (topologyType)
+    {
+    case 0:
+        topologyStr = "FullMatrix";
+        break;
+    case 1:
+        topologyStr = "CakraWheel";
+        break;
+    case 2:
+        topologyStr = "SemiHybrid";
+        break;
+    default:
+        topologyStr = "Unknown";
+        break;
+    }
     // 1. 节点所属充电桩解析
 
     QVector<int> nodeOwners = splitDecimalToInts(nodeOwnersDec, nodeCount);
@@ -204,14 +223,23 @@ void TelnetClient::parseMessage(const QString &msg)
     // 2. 接触器状态解析
     QByteArray contactorBytes = QByteArray::fromHex(contactorHex.toLatin1());
     int totalContactors = 2 * nodeCount; // 环形 + 对角
-    QVector<bool> contactorStates(totalContactors, false);
-    for (int i = 0; i < contactorBytes.size() * 8 && i < totalContactors; ++i)
+    if (SemiHybrid == topologyType)
     {
-        int byteIdx = i / 8;
-        int bitIdx = 7 - (i % 8); // 高位在前（根据示例推测）
-        if (byteIdx < contactorBytes.size())
+        size_t factorial(ID_TYPE n);
+        totalContactors = nodeCount * 5 / 3 + factorial(nodeCount / 3);
+    }
+    QVector<bool> contactorStates(totalContactors, false);
+    // 报文最低位对应最后一个接触器：从右侧字节的 bit0 开始，
+    // 依次向左填充 contactorStates 的尾部。
+    int contactorIndex = totalContactors - 1;
+    for (int byteIdx = contactorBytes.size() - 1;
+         byteIdx >= 0 && contactorIndex >= 0;
+         --byteIdx)
+    {
+        const uchar byte = static_cast<uchar>(contactorBytes.at(byteIdx));
+        for (int bitIdx = 0; bitIdx < 8 && contactorIndex >= 0; ++bitIdx)
         {
-            contactorStates[i] = (contactorBytes[byteIdx] >> bitIdx) & 1;
+            contactorStates[contactorIndex--] = (byte >> bitIdx) & 1;
         }
     }
 
@@ -242,5 +270,6 @@ void TelnetClient::parseMessage(const QString &msg)
         pos += rxPile.matchedLength();
     }
 
-    emit topologyStateReceived(nodeCount, pileCount, nodeOwners, contactorStates, chargingPiles);
+    // 发出信号，包含拓扑类型
+    emit topologyStateReceived(nodeCount, pileCount, topologyStr, nodeOwners, contactorStates, chargingPiles);
 }

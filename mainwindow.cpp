@@ -48,7 +48,7 @@ static QColor makeDisabledColor(const QColor &base)
                qMin(hsl.lightness() + 40, 230)); // 提亮
     return hsl;
 }
-static size_t factorial(ID_TYPE n)
+size_t factorial(ID_TYPE n)
 {
     size_t res = 0;
 
@@ -1047,7 +1047,7 @@ void MainWindow::updateGraphics()
             if (contactor.pau_data->isClosed)
             {
                 // 确定使用哪个充电桩的颜色，如果两个节点连接的充电桩不同，则使用默认灰色
-                int chargerId = get_contactor_pwrflow_dest(contactor.pau_data->id);
+                int chargerId = get_contactor_pwrflow_dest(contactor.pau_data, m_remoteMode);
 
                 if (chargerId > 0 && chargerId <= piles.size())
                 {
@@ -1157,7 +1157,7 @@ void MainWindow::updateGraphics()
                 if (contactor.pau_data->isClosed)
                 {
                     // 确定使用哪个充电桩的颜色，如果两个节点连接的充电桩不同，则使用默认灰色
-                    int chargerId = get_contactor_pwrflow_dest(contactor.pau_data->id);
+                    int chargerId = get_contactor_pwrflow_dest(contactor.pau_data, m_remoteMode);
 
                     if (chargerId > 0 && chargerId <= piles.size())
                     {
@@ -1202,7 +1202,7 @@ void MainWindow::updateGraphics()
                 if (contactor.pau_data->isClosed)
                 {
                     // 确定使用哪个充电桩的颜色，如果两个节点连接的充电桩不同，则使用默认灰色
-                    int chargerId = get_contactor_pwrflow_dest(contactor.pau_data->id);
+                    int chargerId = get_contactor_pwrflow_dest(contactor.pau_data, m_remoteMode);
 
                     if (chargerId > 0 && chargerId <= piles.size())
                     {
@@ -1458,7 +1458,7 @@ void MainWindow::showAboutDialog()
     titleLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(titleLabel);
 
-    QLabel *versionLabel = new QLabel(tr("版本：1.0.6"));
+    QLabel *versionLabel = new QLabel(tr("版本：1.0.7"));
     versionLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(versionLabel);
 
@@ -1801,16 +1801,22 @@ void MainWindow::onTelnetRawLog(const QString &log)
 }
 
 void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
+                                         const QString &topologyType,
                                          const QVector<int> &nodeOwners,
                                          const QVector<bool> &contactorStates,
                                          const QMap<int, QPair<int, int>> &chargingPiles)
 {
     // 校验与当前配置是否一致
     const TopologyConfig &cfg = m_topology->getConfig();
-    if (nodeCount != cfg.nodeCount || pileCount != cfg.pileCount)
+    int cfgnodeCount = cfg.nodeCount;
+    if (SemiHybrid == cfg.topotype)
     {
-        QString err = QString("外部状态不匹配: 期望 (%1,%2) 实际 (%3,%4)")
-                          .arg(cfg.nodeCount)
+        cfgnodeCount = cfg.nodeCount * 3 / 2;
+    }
+    if (nodeCount != cfgnodeCount || pileCount != cfg.pileCount)
+    {
+        QString err = QString("实际电气拓扑与软件配置不匹配: 期望 (%1,%2) 实际 (%3,%4)")
+                          .arg(cfgnodeCount)
                           .arg(cfg.pileCount)
                           .arg(nodeCount)
                           .arg(pileCount);
@@ -1820,12 +1826,39 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
         return;
     }
 
+    QString currentTopoStr;
+    switch (cfg.topotype)
+    {
+    case FullMatrix:
+        currentTopoStr = "FullMatrix";
+        break;
+    case CakraWheel:
+        currentTopoStr = "CakraWheel";
+        break;
+    case SemiHybrid:
+        currentTopoStr = "SemiHybrid";
+        break;
+    default:
+        currentTopoStr = "Unknown";
+        break;
+    }
+
+    if (topologyType != currentTopoStr)
+    {
+        QString err = QString("拓扑类型不匹配: 期望 %1, 实际 %2")
+                          .arg(currentTopoStr)
+                          .arg(topologyType);
+        qWarning() << err;
+        if (m_logWindow)
+            m_logWindow->appendLog(err);
+        return;
+    }
     // 先清除所有现有分配
     for (auto &pile : m_topology->getChargingPiles())
     {
         ::releasePower(pile.id, 0);
     }
-    // 重置所有节点为空闲
+    // 重置所有环形拓扑节点为空闲
     for (int i = 0; i < cfg.nodeCount; ++i)
     {
         PowerNode &node = const_cast<PowerNode &>(m_topology->getNodes()[i]);
@@ -1833,6 +1866,15 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
         node.pau_data->state = NODE_IDLEFREE;
         node.pau_data->plug_id = 0;
     }
+    // 重置所有矩阵拓扑节点为空闲
+    for (int i = 0; i < cfg.nodeCount / 2; ++i)
+    {
+        PowerNode &node = const_cast<PowerNode &>(m_topology->getMatrixNodes()[i]);
+        node.disabled_recover = false;
+        node.pau_data->state = NODE_IDLEFREE;
+        node.pau_data->plug_id = 0;
+    }
+    // 批量刷新图形显示
 
     // 根据 nodeOwners 重新分配节点
     for (int i = 0; i < nodeOwners.size(); ++i)

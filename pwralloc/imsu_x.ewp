@@ -223,7 +223,7 @@
                 <option>
                     <name>CCDefines</name>
                     <state>STM32F40_41xxx</state>
-                    <state>CUSTOM_HEAP_SIZE=0x00001000</state>
+                    <state>CUSTOM_HEAP_SIZE=0x00002000</state>
                 </option>
                 <option>
                     <name>CCPreprocFile</name>
@@ -725,7 +725,7 @@
                 </option>
                 <option>
                     <name>IlinkConfigDefines</name>
-                    <state>CUSTOM_HEAP_SIZE=0x00001000</state>
+                    <state>CUSTOM_HEAP_SIZE=0x00002000</state>
                 </option>
                 <option>
                     <name>IlinkMapFile</name>
@@ -2172,6 +2172,9 @@
     </file>
     <file>
         <name>$PROJ_DIR$\pau_broker.c</name>
+    </file>
+    <file>
+        <name>$PROJ_DIR$\pau_deploy.c</name>
     </file>
     <file>
         <name>$PROJ_DIR$\pau_directed.c</name>

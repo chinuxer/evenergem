@@ -65,7 +65,7 @@ void set_plug_sequent_flag(ID_TYPE plugid, bool val);
 PRIOR get_node_priority(ID_TYPE nodeid);
 size_t get_node_module_cnt(ID_TYPE nodeid);
 size_t get_allover_modules_cnt(void);
-ID_TYPE get_node_chargingplugid(ID_TYPE node);
+
 int get_node_available_power(ID_TYPE nodeid);
 NodeState get_node_state(ID_TYPE nodeid);
 PlugState get_plug_state(ID_TYPE plugid);
@@ -75,4 +75,13 @@ bool route_authentichanged(ID_TYPE plugid, St_PolicyTargetResult *outcome, bool 
 bool is_node_pseudocycledon(ID_TYPE nodeid);
 void recover_node_pseudocycledon(ID_TYPE plugid, ID_TYPE nodeid);
 bool have_plug_occupied_matrixnode(ID_TYPE plugid);
+enum METABOLIN metabole_alethes(unsigned char nodeid, unsigned char relayid, FlowMap *pflow_map);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+    ID_TYPE get_node_chargingplugid(ID_TYPE node);
+#ifdef __cplusplus
+}
+#endif // __cplusplus
 #endif
