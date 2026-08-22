@@ -72,6 +72,17 @@ ID_TYPE calc_plug_connectednode(ID_TYPE plugid, ID_TYPE nodes_total, ID_TYPE plu
     ID_TYPE nodeid = 1 + (plugid - 1) * (nodes_total / plugs_total);
     return nodeid > nodes_total ? nodes_total : nodeid;
 }
+
+size_t get_system_gross_power(void)
+{
+    size_t total_power = 0;
+    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        total_power += pnode->power_available;
+    }
+    return total_power;
+}
 static size_t factorial(ID_TYPE n)
 {
     size_t res = 0;
@@ -115,6 +126,8 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
     Alloc_PlugsArray *p = (Alloc_PlugsArray *)ptr;
     p->length = n;
     p->front_canary = FRONT_MAGICWORD;
+    p->grosspwr = get_system_gross_power();
+    p->outputpwr = 0;
     for (ID_TYPE i = 1; i <= n; i++)
     {
         p->obj_array[i].priority = PRIOR_VAIN;
@@ -366,19 +379,24 @@ void set_plug_priority(ID_TYPE plugid, PRIOR priority)
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     pplug->priority = priority;
 }
-size_t get_plug_chargingnodes_cnt(ID_TYPE plugid)
+int get_plug_chargingnodes_cnt(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
     {
         return -1;
     }
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    size_t num = pau_vector_size(pplug->allocatedNodes);
-    // 去除disable的节点
-    num = num > 0 ? num : 0;
-    return num;
+    int ret = 0;
+    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
+    {
+        if (get_node_state(nodeid) == NODE_OCCUPIED)
+        {
+            ret++;
+        }
+    }
+    return ret;
 }
-size_t get_node_module_cnt(ID_TYPE nodeid)
+int get_node_module_cnt(ID_TYPE nodeid)
 {
     if (!ASSERT_NODE_ID(nodeid))
     {
@@ -386,6 +404,24 @@ size_t get_node_module_cnt(ID_TYPE nodeid)
     }
     return refer_Node_Extracted(nodeid)->moudle_box.size;
 }
+int get_plug_charging_modules_cnt(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return -1;
+    }
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    int ret = 0;
+    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
+    {
+        if (get_node_state(nodeid) == NODE_OCCUPIED)
+        {
+            ret += get_node_module_cnt(nodeid);
+        }
+    }
+    return ret;
+}
+
 size_t get_allover_modules_cnt(void)
 {
     size_t ret = 0;
@@ -429,21 +465,6 @@ void clr_plug_allocated_cnt(ID_TYPE plugid)
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     pau_vector_clear(pplug->allocatedNodes);
 }
-size_t get_plug_chargingmodules_cnt(ID_TYPE plugid)
-{
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    size_t cnt = 0;
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->state != NODE_OCCUPIED)
-        {
-            continue;
-        }
-        cnt += pnode->moudle_box.size;
-    }
-    return cnt;
-}
 
 int get_plug_shortage(ID_TYPE plugid)
 {
@@ -483,14 +504,15 @@ int get_plug_charging_power(ID_TYPE plugid)
 }
 void update_plug_shortage_power(ID_TYPE plugid)
 {
+#define GETQUOTA(x) (0 == (x) ? 0 : ((int)((x) + UNITPWR_MAX + SIZING_TOLERANCE) / UNITPWR_MAX))
     if (!ASSERT_PLUG_ID(plugid))
     {
         return;
     }
-    int power_total = get_plug_charging_power(plugid);
+    int chargingmodulesnum = get_plug_charging_modules_cnt(plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    int shortage_power = (int)(pplug->requiredPower) - power_total;
-    pplug->shortage = (shortage_power >= 0) ? (int)(shortage_power + UNITPWR_MAX - SIZING_TOLERANCE) / UNITPWR_MAX : -1 * (-1 * shortage_power / UNITPWR_MAX);
+
+    pplug->shortage = GETQUOTA(pplug->requiredPower) - chargingmodulesnum;
 }
 ID_TYPE get_node_chargingplugid(ID_TYPE node)
 {
@@ -557,4 +579,8 @@ bool is_node_pseudocycledon(ID_TYPE nodeid)
         return false;
     }
     return refer_Node_Extracted(nodeid)->pseudocycledon;
+}
+size_t get_system_outputting_power(void)
+{
+    return OUTPUTPWR;
 }

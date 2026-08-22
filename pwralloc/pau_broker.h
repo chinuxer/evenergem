@@ -21,7 +21,6 @@ extern "C"
 #include "pau_distinct.h"
 
 #define MAX_MODULES_PER_NODE 3
-#define RATED_PWR_PER_MODULE 625
 #define EN_ARCHE_ALPHA "$CYCLUS$"
 #define EPI_TELEI_OMEGA "$SULCYC$"
 
@@ -158,6 +157,9 @@ void pau_log_printf(const char *fmt, ...);
     {
         uint32_t front_canary; // absolutely required to be top element
         size_t length;
+        size_t grosspwr;
+        size_t outputpwr;
+        size_t limitedpwr;
         struct Alloc_plugObj obj_array[]; // __attribute__((counted_by(length)));
     } Alloc_PlugsArray;
 
@@ -200,6 +202,9 @@ VARIABLE_LIST_PENDING_EXPANDED
 #define UNITPWR_MAX (gpNodesArray->unitpower)
 #define TOPOLOGY_TYPE (gpNodesArray->topology)
 #define NODES_MAX_ENCIRCLE (gpNodesArray->circulo)
+#define OUTPUTPWR (gpPlugsArray->outputpwr)
+#define LIMITEDPWR (gpPlugsArray->limitedpwr)
+#define ASSERT_FLOW_EMBARGO (gpPlugsArray->limitedpwr < gpPlugsArray->grosspwr)
 #define ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX (NODES_MAX_ENCIRCLE != NODE_MAX)
 #define ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX (NODES_MAX_ENCIRCLE == NODE_MAX)
 #define CONTACTOR_SPLICE_MULTIPLE 100

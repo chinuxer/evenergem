@@ -53,11 +53,14 @@ class PowerAlgorithmInterface
 public:
     virtual ~PowerAlgorithmInterface() {}
 
-    // 充电桩请求功率 - 需要后续实现具体的分配策略
+    // 充电桩请求功率 - pau_topolog.c实现具体的分配策略
     virtual bool requestPower(int pileId, int requiredPower) = 0;
 
-    // 充电桩释放功率 - 需要后续实现具体的释放策略
+    // 充电桩释放功率 - pau_topolog.c实现具体的释放策略
     virtual void releasePower(int pileId, int powerToRelease) = 0;
+
+    // 限制总功率 - pau_topolog.c实现具体的限制策略
+    virtual bool restrictPower(int limitedPower) = 0;
 
     // 分配节点给充电桩 - 供策略调用
     virtual void allocateNodeToPile(int nodeId, int pileId, bool emit_signal) = 0;
@@ -88,6 +91,8 @@ public:
 
     bool requestPower(int pileId, int requiredPower) override;
     void releasePower(int pileId, int powerToRelease) override;
+    bool restrictPower(int limitedPower) override;
+
     bool toggleNodeEnabled(int nodeId);
     void allocateNodeToPile(int nodeId, int pileId, bool emit_signal) override;
     void releaseNodeFromPile(int nodeId, int pileId, bool emit_signal) override;
@@ -102,7 +107,6 @@ public:
 public slots:
     // 设置充电桩优先级
     void setPilePriority(int pileId, int priority);
-    int get_totalpower(void);
 signals:
     void
     topologyChanged();

@@ -39,7 +39,7 @@ enum METABOLIN
 // union PCU_RawData retriver_PCU_RawData(ID_TYPE id, PCURawData data_type);
 ID_TYPE get_neighbor_lower_alpha(ID_TYPE nodeid);
 ID_TYPE get_neighbor_lower_beta(ID_TYPE nodeid);
-size_t get_plug_chargingnodes_cnt(ID_TYPE plugid);
+int get_plug_chargingnodes_cnt(ID_TYPE plugid);
 size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighbor_plugid, ID_TYPE nodeid, ID_TYPE neighbor_nodeid);
 size_t get_plug_requiredPower(ID_TYPE plugid);
 PRIOR get_plug_priority(ID_TYPE plugid);
@@ -63,7 +63,7 @@ bool get_plug_sequent_flag(ID_TYPE plugid);
 void set_plug_sequent_flag(ID_TYPE plugid, bool val);
 
 PRIOR get_node_priority(ID_TYPE nodeid);
-size_t get_node_module_cnt(ID_TYPE nodeid);
+int get_node_module_cnt(ID_TYPE nodeid);
 size_t get_allover_modules_cnt(void);
 
 int get_node_available_power(ID_TYPE nodeid);
@@ -76,6 +76,7 @@ bool is_node_pseudocycledon(ID_TYPE nodeid);
 void recover_node_pseudocycledon(ID_TYPE plugid, ID_TYPE nodeid);
 bool have_plug_occupied_matrixnode(ID_TYPE plugid);
 enum METABOLIN metabole_alethes(unsigned char nodeid, unsigned char relayid, FlowMap *pflow_map);
+
 #ifdef __cplusplus
 extern "C"
 {

@@ -232,6 +232,10 @@ MainWindow::MainWindow(TOPOTYPE topologyType, QWidget *parent)
     connect(ui->stopChargeButton, &QPushButton::clicked, this, &MainWindow::onStopChargeClicked);
     connect(ui->toggleNodeEnableButton, &QPushButton::clicked, this, &MainWindow::onToggleNodeEnableClicked);
     connect(m_modeSlider, &QSlider::valueChanged, this, &MainWindow::onModeSliderChanged);
+    connect(ui->powerLimitApplyButton, &QPushButton::clicked, this, &MainWindow::onPowerLimitApplyClicked);
+    connect(ui->powerLimitCancelButton, &QPushButton::clicked, this, &MainWindow::onPowerLimitCancelClicked);
+    connect(ui->powerLimitSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onPowerLimitValueChanged);
 
     onApplyConfigClicked();
 
@@ -413,11 +417,11 @@ void MainWindow::onApplyConfigClicked()
         QVector<int> defaultCap(totalNodes, 1);
         if (!saveNodeCapacities(defaultCap, nullptr))
         {
-            ui->logTextEdit->append("警告：无法创建默认节点容量配置文件");
+            ui->logTextEdit->append("⛔警告：无法创建默认节点容量配置文件");
         }
         else
         {
-            ui->logTextEdit->append("已生成默认节点容量配置（所有节点模块数为1）");
+            ui->logTextEdit->append("✅已生成默认节点容量配置（所有节点模块数为1）");
         }
     }
 
@@ -471,7 +475,14 @@ void MainWindow::onApplyConfigClicked()
     // 刷新状态显示
     onTopologyChanged();
 
-    ui->logTextEdit->append(QString("✓ 配置已应用: %1节点, %2充电桩").arg(nodeCount).arg(pileCount));
+    ui->logTextEdit->append(QString("✅配置已应用: %1节点, %2充电桩").arg(nodeCount).arg(pileCount));
+    // 初始化功率限制相关变量
+    m_powerLimitValue = getTotalSystemPower();
+    m_totalpower = m_powerLimitValue;
+    m_powerLimitActive = false;
+    // 回填到界面
+    ui->powerLimitSpinBox->setValue(m_powerLimitValue);
+    updatePowerLimitPercent(m_powerLimitValue);
 }
 void MainWindow::onRequestPowerClicked()
 {
@@ -496,11 +507,11 @@ void MainWindow::onRequestPowerClicked()
 
     if (success)
     {
-        ui->logTextEdit->append(QString("✓ 充电桩%1 (优先级%2) 请求 %3kW 功率成功").arg(pileId).arg(priority).arg(power / 10.0, 0, 'f', 1));
+        ui->logTextEdit->append(QString("✅ 充电桩%1 (优先级%2) 请求 %3kW 功率成功").arg(pileId).arg(priority).arg(power / 10.0, 0, 'f', 1));
     }
     else
     {
-        ui->logTextEdit->append(QString("✗ 充电桩%1 (优先级%2) 功率请求失败").arg(pileId).arg(priority));
+        ui->logTextEdit->append(QString("⛔ 充电桩%1 (优先级%2) 功率请求失败").arg(pileId).arg(priority));
     }
 }
 
@@ -518,7 +529,7 @@ void MainWindow::onReleasePowerClicked()
     // 调用算法接口（后续实现）
     m_topology->releasePower(pileId, power);
 
-    ui->logTextEdit->append(QString("→ 充电桩%1 释放 %2kW 功率").arg(pileId).arg(power / 10.0, 0, 'f', 1));
+    ui->logTextEdit->append(QString("👉 充电桩🚘%1 释放 %2kW 功率").arg(pileId).arg(power / 10.0, 0, 'f', 1));
 }
 
 void MainWindow::onStopChargeClicked()
@@ -537,7 +548,7 @@ void MainWindow::onStopChargeClicked()
     }
 
     m_topology->stopCharging(pileId);
-    ui->logTextEdit->append(QString("→ 充电桩%1 已结束充电").arg(pileId));
+    ui->logTextEdit->append(QString("👉 充电桩🚘%1 已结束充电").arg(pileId));
 }
 void MainWindow::onPileSelectionChanged(int index)
 {
@@ -583,7 +594,7 @@ void MainWindow::onPriorityChanged()
                                   Q_ARG(int, m_selectedPile),
                                   Q_ARG(int, priority));
 
-        ui->logTextEdit->append(QString("→ 充电桩%1优先级更新为%2").arg(m_selectedPile).arg(priority));
+        ui->logTextEdit->append(QString("👉 充电桩🚘%1优先级更新为%2").arg(m_selectedPile).arg(priority));
     }
 }
 void MainWindow::onTopologyChanged()
@@ -605,7 +616,7 @@ void MainWindow::onAllocateNodeClicked()
 
     // 手动分配节点（测试用）
     m_topology->allocateNodes_manu(m_selectedNode, m_selectedPile);
-    ui->logTextEdit->append(QString("→ 手动分配: 节点%1 -> 充电桩%2").arg(m_selectedNode).arg(m_selectedPile));
+    ui->logTextEdit->append(QString("👉 手动分配: 节点%1 -> 充电桩🚘%2").arg(m_selectedNode).arg(m_selectedPile));
 }
 
 void MainWindow::onReleaseNodeClicked()
@@ -618,7 +629,7 @@ void MainWindow::onReleaseNodeClicked()
 
     // 手动释放节点（测试用）
     m_topology->releaseNodes_manu(m_selectedNode);
-    ui->logTextEdit->append(QString("→ 手动释放: 节点%1").arg(m_selectedNode));
+    ui->logTextEdit->append(QString("👉 手动释放: 节点%1").arg(m_selectedNode));
 }
 
 void MainWindow::onSaveStateClicked()
@@ -639,7 +650,7 @@ void MainWindow::onSaveStateClicked()
     }
     file.write(doc.toJson());
     file.close();
-    ui->logTextEdit->append(QString("✓ 工况已保存至 %1").arg(fileName));
+    ui->logTextEdit->append(QString("✅ 工况已保存至 %1").arg(fileName));
 }
 void MainWindow::onLoadStateClicked()
 {
@@ -668,7 +679,7 @@ void MainWindow::onLoadStateClicked()
     bool ok = m_topology->loadState(doc.object());
     if (ok)
     {
-        ui->logTextEdit->append(QString("✓ 已从 %1 加载工况").arg(fileName));
+        ui->logTextEdit->append(QString("✅ 已从 %1 加载工况").arg(fileName));
         // 刷新UI显示
         updatePileComboBox();
         onTopologyChanged(); // 会刷新图形和状态文本
@@ -1124,7 +1135,7 @@ void MainWindow::updateGraphics()
             {
                 // Format %3 as a float with 1 decimal place
                 // Assuming requiredPower is in units of 0.1kW, so divide by 10.0
-                size_t moduleCount = ::get_plug_chargingmodules_cnt(pile.pau_data->id);
+                size_t moduleCount = ::calc_plug_chargingmodules_cnt(pile.pau_data->id);
                 QString labelText = QString("%1:%2 %3\n%4级")
                                         .arg(moduleCount)
                                         .arg(pile.pau_data->shortage)
@@ -1476,7 +1487,7 @@ void MainWindow::showAboutDialog()
     // 描述文字
     QLabel *descLabel = new QLabel(tr(
         "\n直流充电桩功率分配演示系统\n"
-        "用于教学演示、图论算法研究、电气系统可行性及研发思路验证\n\n"
+        "用于教学演示、图论算法研究、电气系统设计可行性及软件研发思路验证\n\n"
         "本软件仅供非商业用途使用，不作为开发者所在公司产品售卖\n详情见免责声明"));
     descLabel->setAlignment(Qt::AlignCenter);
     descLabel->setWordWrap(true);
@@ -1703,7 +1714,7 @@ void MainWindow::onNodeCapacitySettingsTriggered()
         (void)oprt_node_module_count_set(i + 1, static_cast<size_t>(updatedCapacities.at(i)));
 
     onTopologyChanged();
-    ui->logTextEdit->append(tr("✓ 已更新 %1 个节点的模块容量").arg(updatedCapacities.size()));
+    ui->logTextEdit->append(tr("✅ 已更新 %1 个节点的模块容量").arg(updatedCapacities.size()));
 }
 
 void MainWindow::onContactorLoadSettingsTriggered()
@@ -1721,11 +1732,11 @@ void MainWindow::onToggleNodeEnableClicked()
     bool enabled = m_topology->toggleNodeEnabled(m_selectedNode);
     if (enabled)
     {
-        ui->logTextEdit->append(QString("→ 节点%1 已启用").arg(m_selectedNode));
+        ui->logTextEdit->append(QString("👉 节点%1 已启用").arg(m_selectedNode));
     }
     else
     {
-        ui->logTextEdit->append(QString("→ 节点%1 已禁用").arg(m_selectedNode));
+        ui->logTextEdit->append(QString("👉 节点%1 已禁用").arg(m_selectedNode));
     }
     // 刷新图形显示
     onTopologyChanged();
@@ -1780,7 +1791,7 @@ void MainWindow::onTelnetConnected()
     ui->powerSpinBox->setEnabled(false);
     ui->pileComboBox->setEnabled(false);
     ui->nodeListWidget->setEnabled(false);
-    ui->logTextEdit->append(QString("✓ 已连接到远程服务器，已切换到远程控制模式"));
+    ui->logTextEdit->append(QString("✅ 已连接到远程服务器，已切换到远程控制模式"));
 }
 
 void MainWindow::onTelnetDisconnected()
@@ -1960,7 +1971,7 @@ void MainWindow::onModeSliderChanged(int value)
         ui->powerSpinBox->setEnabled(false);
         ui->pileComboBox->setEnabled(false);
         ui->nodeListWidget->setEnabled(false);
-        ui->logTextEdit->append("已切换到远程模式，正在连接服务器...");
+        ui->logTextEdit->append("🔗已切换到远程模式，正在连接服务器...");
     }
     else
     {
@@ -1991,6 +2002,152 @@ void MainWindow::onModeSliderChanged(int value)
         ui->powerSpinBox->setEnabled(true);
         ui->pileComboBox->setEnabled(true);
         ui->nodeListWidget->setEnabled(true);
-        ui->logTextEdit->append("已切换到手动模式，本地控制已恢复。");
+        ui->logTextEdit->append("💻已切换到手动模式，本地控制已恢复。");
     }
+}
+
+double MainWindow::getTotalSystemPower() const
+{
+    int totalPower = ::get_system_gross_power();
+    return (double)(0.1 * totalPower);
+}
+double MainWindow::getOutputtingPower() const
+{
+    size_t outputtingPower = ::get_system_outputting_power();
+    return (double)(0.1 * outputtingPower);
+}
+
+void MainWindow::updatePowerLimitPercent(double value)
+{
+    double totalPower = getStaticTotalSystemPower();
+    double outputtingPower = getOutputtingPower();
+    double percent = 0.0;
+
+    if (totalPower > 0)
+    {
+        percent = (value / totalPower) * 100.0;
+    }
+
+    // 限制百分比范围
+    if (percent > 100.0)
+    {
+        percent = 100.0;
+        ui->powerLimitSpinBox->blockSignals(true);
+        ui->powerLimitSpinBox->setValue(totalPower);
+        ui->powerLimitSpinBox->blockSignals(false);
+    }
+
+    // 更新百分比显示
+    ui->label_powerLimitPercent->setText(QString("%1%").arg(percent, 0, 'f', 1));
+
+    // 根据是否生效改变颜色
+    if (m_powerLimitActive && outputtingPower > value)
+    {
+        ui->label_powerLimitPercent->setStyleSheet(
+            "QLabel {"
+            "    background-color: rgba(220, 0, 0, 85);"
+            "    border: 2px solid #ff3300;"
+            "    border-radius: 4px;"
+            "    padding: 4px;"
+            "    color: #ff0040;"
+            "    font-weight: bold;"
+            "    font-size: 11pt;"
+            "}");
+    }
+    else if (m_powerLimitActive && outputtingPower < value)
+    {
+        ui->label_powerLimitPercent->setStyleSheet(
+            "QLabel {"
+            "    background-color: rgba(0, 70, 0, 90);"
+            "    border: 2px solid #2a5308;"
+            "    border-radius: 4px;"
+            "    padding: 4px;"
+            "    color: #057e42;"
+            "    font-weight: bold;"
+            "    font-size: 11pt;"
+            "}");
+    }
+    else
+    {
+        ui->label_powerLimitPercent->setStyleSheet(
+            "QLabel {"
+            "    background-color: rgba(30, 40, 60, 100);"
+            "    border: 1px solid #2a82da;"
+            "    border-radius: 4px;"
+            "    padding: 4px;"
+            "    color: #00e0ff;"
+            "    font-weight: bold;"
+            "    font-size: 11pt;"
+            "}");
+    }
+}
+
+void MainWindow::onPowerLimitValueChanged(double value)
+{
+    m_powerLimitValue = value;
+    updatePowerLimitPercent(value);
+    ui->logTextEdit->append(QString("⚡功率限制值已修改🖍: %1 kW").arg(value, 0, 'f', 1));
+    if (m_powerLimitActive)
+    {
+        ui->logTextEdit->append(QString("⚠ 功率限制生效中，当前输出功率: %1 kW").arg(getOutputtingPower(), 0, 'f', 1));
+        // TODO: 实现具体的功率限制逻辑
+        bool success = m_topology->restrictPower((int)(m_powerLimitValue * 10));
+        if (!success)
+        {
+            ui->logTextEdit->append("❌功率限制失败，请检查配置并重新尝试...");
+        }
+    }
+}
+
+void MainWindow::onPowerLimitApplyClicked()
+{
+    double limitValue = ui->powerLimitSpinBox->value();
+    double totalPower = getStaticTotalSystemPower();
+
+    // 检查是否超过总功率
+    if (limitValue > totalPower)
+    {
+        QMessageBox::warning(this, "功率限制",
+                             QString("限制功率 (%1 kW) 超过系统总功率 (%2 kW)，将自动调整为总功率值")
+                                 .arg(limitValue, 0, 'f', 1)
+                                 .arg(totalPower, 0, 'f', 1));
+        ui->powerLimitSpinBox->setValue(totalPower);
+        limitValue = totalPower;
+    }
+
+    if (limitValue <= 0)
+    {
+        QMessageBox::warning(this, "功率限制", "功率限制值必须大于0");
+        return;
+    }
+
+    m_powerLimitActive = true;
+    m_powerLimitValue = limitValue;
+    updatePowerLimitPercent(limitValue);
+
+    // TODO: 实现具体的功率限制逻辑
+
+    ui->logTextEdit->append(QString("✅ 功率限制已生效: %1 kW (占系统总功率 %2%)")
+                                .arg(limitValue, 0, 'f', 1)
+                                .arg((limitValue / totalPower) * 100.0, 0, 'f', 1));
+
+    // 可选：发出状态变化信号，让其他部分知道功率限制已生效
+    emit m_topology->topologyChanged();
+}
+
+void MainWindow::onPowerLimitCancelClicked()
+{
+    m_powerLimitActive = false;
+    double totalPower = getStaticTotalSystemPower();
+
+    // 恢复显示
+    ui->powerLimitSpinBox->setValue(totalPower);
+    updatePowerLimitPercent(totalPower);
+
+    // TODO: 实现取消功率限制的具体逻辑
+
+    ui->logTextEdit->append("❌功率限制已取消");
+
+    // 可选：发出状态变化信号
+    emit m_topology->topologyChanged();
 }

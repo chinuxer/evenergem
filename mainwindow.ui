@@ -90,13 +90,12 @@
          </widget>
         </item>
         <item>
-        
          <widget class="QDoubleSpinBox" name="unitPowerSpinBox">
           <property name="suffix">
            <string> kW</string>
           </property>
           <property name="decimals">
-           <number>1</number>  <!-- 保留1位小数 -->
+           <number>1</number>
           </property>
           <property name="minimum">
            <double>10.000000000000000</double>
@@ -105,7 +104,7 @@
            <double>200.000000000000000</double>
           </property>
           <property name="singleStep">
-           <double>0.500000000000000</double> <!-- 步长设为 0.5 -->
+           <double>0.500000000000000</double>
           </property>
           <property name="value">
            <double>40.000000000000000</double>
@@ -129,40 +128,65 @@
        </widget>
       </item>
       <item>
-       <widget class="QComboBox" name="pileComboBox"/>
-      </item>
-      <item>
-       <widget class="QSpinBox" name="powerSpinBox">
-        <property name="suffix">
-         <string> kW</string>
-        </property>
-        <property name="maximum">
-         <number>2000</number>
-        </property>
-        <property name="value">
-         <number>40</number>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_9">
-        <property name="text">
-         <string>充电桩优先级:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QSpinBox" name="prioritySpinBox">
-        <property name="minimum">
-         <number>1</number>
-        </property>
-        <property name="maximum">
-         <number>4</number>
-        </property>
-        <property name="value">
-         <number>1</number>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="horizontalLayout_powerControl">
+        <item>
+         <widget class="QComboBox" name="pileComboBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>1</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox"  name="powerSpinBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>1</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="suffix">
+           <string> kW</string>
+          </property>
+          <property name="decimals">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>2000</number>
+          </property>
+           <property name="singleStep">
+           <double>0.500000000000000</double>
+          </property>
+          <property name="value">
+           <number>40</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="prioritySpinBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>1</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="prefix">
+           <string>优先级</string>
+          </property>
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>4</number>
+          </property>
+          <property name="value">
+           <number>1</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_4">
@@ -181,11 +205,107 @@
          </widget>
         </item>
         <item>
-        <widget class="QPushButton" name="stopChargeButton">
+         <widget class="QPushButton" name="stopChargeButton">
+          <property name="text">
+           <string>结束充电</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+            <item>
+       <widget class="QLabel" name="label_powerLimit">
         <property name="text">
-         <string>结束充电</string>
+         <string>功率限制</string>
         </property>
-        </widget>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_powerLimit">
+        <item>
+         <widget class="QDoubleSpinBox" name="powerLimitSpinBox">
+          <property name="suffix">
+           <string> kW</string>
+          </property>
+          <property name="decimals">
+           <number>1</number>
+          </property>
+          <property name="minimum">
+           <double>0.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>2000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>10.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>1000.000000000000000</double>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>1</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_powerLimitPercent">
+          <property name="text">
+           <string>100%</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>1</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="styleSheet">
+           <string>QLabel {
+    background-color: rgba(30, 40, 60, 100);
+    border: 1px solid #2a82da;
+    border-radius: 4px;
+    padding: 4px;
+    color: #00e0ff;
+    font-weight: bold;
+    font-size: 11pt;
+}</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_powerLimitButtons">
+        <item>
+         <widget class="QPushButton" name="powerLimitApplyButton">
+          <property name="text">
+           <string>限额生效</string>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>1</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="powerLimitCancelButton">
+          <property name="text">
+           <string>限额取消</string>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>1</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+         </widget>
         </item>
        </layout>
       </item>
@@ -217,10 +337,10 @@
         </item>
         <item>
          <widget class="QPushButton" name="toggleNodeEnableButton">
-         <property name="text">
-         <string>可用启停</string>
-        </property>
-        </widget>
+          <property name="text">
+           <string>可用启停</string>
+          </property>
+         </widget>
         </item>
        </layout>
       </item>

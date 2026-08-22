@@ -12,11 +12,14 @@ extern "C"
     bool oprt_node_module_count_set(ID_TYPE nodeid, size_t module_count);
     bool requestPower(ID_TYPE, int);
     bool releasePower(ID_TYPE, int);
+    ID_TYPE restrictPower(size_t limitedPower);
     bool hear_Canaries_Twittering(void);
     bool set_node_availability(ID_TYPE node_id);
     void push_NodetoPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid);
     void pull_NodefromPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid);
-    size_t get_plug_chargingmodules_cnt(ID_TYPE plugid);
+    size_t calc_plug_chargingmodules_cnt(ID_TYPE plugid);
+    size_t get_system_gross_power(void);
+    size_t get_system_outputting_power(void);
 }
 #ifdef __IMPORT_DATAFEEDER__
 St_PolicyTargetResult gtarget_result[MAXNODES_MEM_LMT] = {0};

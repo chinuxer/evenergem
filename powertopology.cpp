@@ -132,27 +132,7 @@ QVector<QColor> SimpleTopology::generateColors(int count)
 
     return colors;
 }
-int SimpleTopology::get_totalpower(void)
-{
-    int m_totalPower = 0;
-    // 遍历m_nodes，获取所有节点的模块数，乘以模块的额定功率，求和
 
-    for (int nodeId = 1; nodeId <= m_nodes.size(); nodeId++)
-    {
-        int moduleCnt = m_nodes[nodeId - 1].pau_data->moudle_box.size;
-        int modulePower = m_nodes[nodeId - 1].pau_data->power_available;
-        int nodePower = moduleCnt * modulePower;
-        m_totalPower += nodePower;
-    }
-    for (int nodeId = 1; nodeId <= m_matrixnodes.size(); nodeId++)
-    {
-        int moduleCnt = m_matrixnodes[nodeId - 1].pau_data->moudle_box.size;
-        int modulePower = m_matrixnodes[nodeId - 1].pau_data->power_available;
-        int nodePower = moduleCnt * modulePower;
-        m_totalPower += nodePower;
-    }
-    return m_totalPower;
-}
 bool SimpleTopology::requestPower(int pileId, int requiredPower)
 {
     if (pileId < 1 || pileId > m_piles.size())
@@ -160,7 +140,7 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
         qWarning() << "无效的充电桩ID:" << pileId;
         return false;
     }
-    int totalpower_limit = get_totalpower();
+    int totalpower_limit = ::get_system_gross_power();
 
     if (requiredPower < 0 || requiredPower > totalpower_limit)
     {
@@ -233,7 +213,32 @@ void SimpleTopology::releasePower(int pileId, int powerToRelease)
     }
     emit topologyChanged();
 }
-
+bool SimpleTopology::restrictPower(int limitedPower)
+{
+    if (limitedPower < 0 || limitedPower > ::get_system_gross_power())
+    {
+        qWarning() << "无效的功率限制:" << limitedPower;
+        return false;
+    }
+    int guardian_loop = 0;
+    ID_TYPE pileId = ID_VAIN;
+    while (::get_system_outputting_power() > limitedPower)
+    {
+        pileId = ::restrictPower((size_t)(limitedPower));
+        if (pileId == ID_VAIN)
+        {
+            break; // 没有更多可释放的充电桩，退出循环
+        }
+        linkage_publisher(pileId);
+        emit topologyChanged();
+        if (guardian_loop++ > m_nodes.size()) // 防止无限循环
+        {
+            qWarning() << "限制功率时发生无限循环";
+            break;
+        }
+    }
+    return pileId != ID_VAIN;
+}
 void SimpleTopology::allocateNodeToPile(int nodeId, int pileId, bool emit_signal)
 {
     int nodemax = m_nodes.size();

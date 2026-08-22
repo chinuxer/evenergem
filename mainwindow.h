@@ -36,6 +36,9 @@ public:
         keyNode2,
         vislevel,
     };
+    bool isPowerLimitActive() const { return m_powerLimitActive; }
+    int getPowerLimitValue() const { return m_powerLimitValue; }
+    double getStaticTotalSystemPower() const { return m_totalpower; }
 private slots:
     void onApplyConfigClicked();
     void onRequestPowerClicked();
@@ -64,6 +67,10 @@ private slots:
                                  const QMap<int, QPair<int, int>> &chargingPiles);
     void onModeSliderChanged(int value);
 
+    void onPowerLimitApplyClicked();
+    void onPowerLimitCancelClicked();
+    void onPowerLimitValueChanged(double value);
+
 private:
     void setupGraphicsScene();
     void updateGraphics();
@@ -72,6 +79,10 @@ private:
     int activeNodeCount() const;
     QVector<int> loadNodeCapacities(int nodeCount) const;
     bool saveNodeCapacities(const QVector<int> &capacities, QString *errorMessage) const;
+
+    void updatePowerLimitPercent(double value);
+    double getTotalSystemPower() const;
+    double getOutputtingPower() const;
     TelnetClient *m_telnetClient;
     LogWindow *m_logWindow;
     bool m_remoteControlMode;
@@ -107,6 +118,10 @@ private:
     QSlider *m_modeSlider; // 模式滑块
     bool m_remoteMode;     // 当前是否为远程模式
     TOPOTYPE m_topologyType;
+
+    double m_totalpower;
+    double m_powerLimitValue; // 当前功率限制值 (kW)
+    bool m_powerLimitActive;  // 功率限制是否生效
 };
 
 #endif // MAINWINDOW_H

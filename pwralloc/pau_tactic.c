@@ -188,6 +188,17 @@ void print_outcomes(ID_TYPE plugid)
     pau_printf("%s\r\n", log_buffer);
 }
 
+/**
+ * 每个充电桩至少保留一个节点，避免完全停止
+ * 按功率比例（每个桩的模块占总工作模块数比例)削减，大功率桩多削减，小功率桩少削减
+ */
+void pwrlimitplan_cutoff(int limited_power)
+{
+    if (limited_power < 0)
+    {
+        return;
+    }
+}
 size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighbor_plugid, ID_TYPE nodeid, ID_TYPE neighbor_nodeid)
 {
     if (!ASSERT_PLUG_ID(plugid) || !ASSERT_PLUG_ID(neighbor_plugid) || !ASSERT_NODE_ID(nodeid) || !ASSERT_NODE_ID(neighbor_nodeid))

@@ -471,6 +471,8 @@ static void pull_NodefromPlug(ID_TYPE nodeid, ID_TYPE plugid)
     pnode->priority = PRIOR_VAIN;
     pnode->pseudocycledon = false;
     pau_vector_remove(pplug->allocatedNodes, nodeid); // 从在充节点名单中除名该节点
+    OUTPUTPWR -= pnode->power_available;
+    OUTPUTPWR = OUTPUTPWR < 0 ? 0 : OUTPUTPWR;
     pau_printf(" release node %d from plug %d\r\n", nodeid, plugid);
     if (pnode->state == NODE_OCCUPIED)
     {
@@ -505,6 +507,7 @@ static void push_NodetoPlug(ID_TYPE nodeid, ID_TYPE plugid)
     pnode->plug_id = plugid;
     pnode->priority = pplug->priority;
     pau_vector_append(pplug->allocatedNodes, nodeid);
+    OUTPUTPWR += pnode->power_available;
     pau_printf(" allocate node %d to plug %d\r\n", nodeid, plugid);
     if (pnode->state == NODE_IDLEFREE)
     {
@@ -1239,6 +1242,10 @@ static bool transferPower(ID_TYPE plugid, bool (*func)(ID_TYPE))
     {
         return false;
     }
+    if (ASSERT_FLOW_EMBARGO)
+    {
+        return false;
+    }
     int loop_guard = 0;
     while (loop_guard < NODES_MAX_ENCIRCLE)
     {
@@ -1493,7 +1500,21 @@ static bool node_extra_operate(ID_TYPE plugid, bool opType)
     }
     return occupiednodes_preempt(plugid);
 }
-
+size_t calc_plug_chargingmodules_cnt(ID_TYPE plugid)
+{
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    size_t cnt = 0;
+    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        if (pnode->state != NODE_OCCUPIED)
+        {
+            continue;
+        }
+        cnt += pnode->moudle_box.size;
+    }
+    return cnt;
+}
 bool requestPower(ID_TYPE plugid, int requiredPower)
 {
     /* ── 验证 ── */
@@ -1599,6 +1620,49 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
     transferPower(plugid, idlenodes_encircle_donatio);
     transferPower(plugid, idlenodes_semimatrix_donatio);
     return res;
+}
+
+ID_TYPE restrictPower(size_t limitedPower)
+{
+    if (OUTPUTPWR < limitedPower)
+    {
+        return ID_VAIN;
+    }
+    LIMITEDPWR = limitedPower;
+    int litter_quota = (OUTPUTPWR - limitedPower + UNITPWR_MAX - 1) / UNITPWR_MAX;
+    // 找到充电中的各plug中占有模块数最多的plug
+    ID_TYPE plugid_most = ID_VAIN;
+    size_t plug_most_cnt = 0;
+    size_t plug_most_quota = 0;
+    for (ID_TYPE plugid = 1; plugid <= PLUG_MAX; plugid++)
+    {
+        if (PLUG_IDLE == get_plug_state(plugid))
+        {
+            continue;
+        }
+        if (1 == get_plug_chargingnodes_cnt(plugid))
+        {
+            continue;
+        }
+        size_t module_cnt = calc_plug_chargingmodules_cnt(plugid);
+        if (module_cnt > plug_most_cnt)
+        {
+            plug_most_cnt = module_cnt;
+            plugid_most = plugid;
+            plug_most_quota = plug_most_cnt * UNITPWR_MAX * litter_quota / OUTPUTPWR;
+            plug_most_quota = 0 == plug_most_quota ? 1 : plug_most_quota;
+        }
+    }
+    if (ID_VAIN == plugid_most)
+    {
+        return ID_VAIN;
+    }
+    int releasepwr = get_plug_charging_power(plugid_most);
+    releasepwr -= plug_most_quota * UNITPWR_MAX;
+    releasepwr = releasepwr < UNITPWR_MAX ? UNITPWR_MAX : releasepwr;
+    releasePower(plugid_most, releasepwr);
+    update_plug_shortage_power(plugid_most);
+    return plugid_most;
 }
 static inline int flowmap_cmp(const FlowMap *a, const FlowMap *b)
 {
