@@ -229,6 +229,7 @@ bool SimpleTopology::restrictPower(int limitedPower)
         {
             break; // 没有更多可释放的充电桩，退出循环
         }
+        qWarning() << "轮切充电桩" << pileId << "释放功率";
         linkage_publisher(pileId);
         emit topologyChanged();
         if (guardian_loop++ > m_nodes.size()) // 防止无限循环

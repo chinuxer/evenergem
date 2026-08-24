@@ -14,41 +14,6 @@ static void dec_str_to_hex_str(const char *dec_str, char *hex_str, int size)
     // 用传入的大小，不要用 sizeof！
     snprintf(hex_str, size, "%lX", num);
 }
-static void bin2hex_left_pad_(const char *bin_str, char *hex_str)
-{
-    int len = strlen(bin_str);
-    int hex_idx = 0;
-
-    // 先处理补的 0
-    int i;
-    int val = 0;
-    for (i = 0; i < len % 4; i++)
-    {
-        int bit = bin_str[i] - '0';
-
-        val = (val << 1) | bit;
-    }
-    if (0 < val)
-    {
-        hex_str[hex_idx++] = "0123456789ABCDEF"[val];
-    }
-    // 再处理真实的二进制位
-    val = 0;
-    for (i = i; i < len; i++)
-    {
-        int bit = bin_str[i] - '0';
-
-        val = (val << 1) | bit;
-
-        if ((i + 1) % 4 == 0)
-        {
-            hex_str[hex_idx++] = "0123456789ABCDEF"[val];
-            val = 0;
-        }
-    }
-
-    hex_str[hex_idx] = '\0';
-}
 static void bin2hex_left_pad(const char *bin_str, char *hex_str)
 {
     int len = strlen(bin_str);

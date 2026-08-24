@@ -82,6 +82,7 @@ extern "C"
 {
 #endif
     ID_TYPE get_node_chargingplugid(ID_TYPE node);
+    size_t get_plug_charging_modules_cnt(ID_TYPE plugid);
 #ifdef __cplusplus
 }
 #endif // __cplusplus

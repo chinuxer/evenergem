@@ -1504,21 +1504,7 @@ static bool node_extra_operate(ID_TYPE plugid, bool opType)
     }
     return occupiednodes_preempt(plugid);
 }
-size_t calc_plug_chargingmodules_cnt(ID_TYPE plugid)
-{
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    size_t cnt = 0;
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->state != NODE_OCCUPIED)
-        {
-            continue;
-        }
-        cnt += pnode->moudle_box.size;
-    }
-    return cnt;
-}
+
 bool requestPower(ID_TYPE plugid, int requiredPower)
 {
     /* ── 验证 ── */
@@ -1646,7 +1632,7 @@ ID_TYPE restrictPower(size_t limitedPower)
         {
             continue;
         }
-        size_t module_cnt = calc_plug_chargingmodules_cnt(plugid);
+        size_t module_cnt = get_plug_charging_modules_cnt(plugid);
         if (module_cnt > plug_most_cnt)
         {
             plug_most_cnt = module_cnt;

@@ -1135,7 +1135,7 @@ void MainWindow::updateGraphics()
             {
                 // Format %3 as a float with 1 decimal place
                 // Assuming requiredPower is in units of 0.1kW, so divide by 10.0
-                size_t moduleCount = ::calc_plug_chargingmodules_cnt(pile.pau_data->id);
+                size_t moduleCount = ::get_plug_charging_modules_cnt(pile.pau_data->id);
                 QString labelText = QString("%1:%2 %3\n%4级")
                                         .arg(moduleCount)
                                         .arg(pile.pau_data->shortage)
@@ -1732,11 +1732,11 @@ void MainWindow::onToggleNodeEnableClicked()
     bool enabled = m_topology->toggleNodeEnabled(m_selectedNode);
     if (enabled)
     {
-        ui->logTextEdit->append(QString("👉 节点%1 已启用").arg(m_selectedNode));
+        ui->logTextEdit->append(QString("👉 节点%1 已启用👌").arg(m_selectedNode));
     }
     else
     {
-        ui->logTextEdit->append(QString("👉 节点%1 已禁用").arg(m_selectedNode));
+        ui->logTextEdit->append(QString("👉 节点%1 已禁用👎").arg(m_selectedNode));
     }
     // 刷新图形显示
     onTopologyChanged();
