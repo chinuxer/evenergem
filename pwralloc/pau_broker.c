@@ -127,6 +127,7 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
     p->length = n;
     p->front_canary = FRONT_MAGICWORD;
     p->grosspwr = get_system_gross_power();
+    p->limitedpwr = p->grosspwr;
     p->outputpwr = 0;
     for (ID_TYPE i = 1; i <= n; i++)
     {

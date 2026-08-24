@@ -57,6 +57,8 @@ typedef struct
     unsigned char u8PolicyTargetPowerNodeNum;
     unsigned char PolicyTargetdPowerNode[MAXNODES_MEM_LMT];
     unsigned char PolicyTarget_RelayNo[MAXNODES_MEM_LMT][2];
+    unsigned char u8Hops[MAXNODES_MEM_LMT];
+    unsigned char u8ParentNodeNo[MAXNODES_MEM_LMT];
 } St_PolicyTargetResult;
 
 #endif

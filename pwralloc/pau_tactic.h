@@ -27,7 +27,7 @@ enum Senario
 };
 typedef struct
 {
-    ID_TYPE contactorid, direction, appendix, hops;
+    ID_TYPE contactorid, direction, appendix, hops, genogram;
 } FlowMap;
 enum METABOLIN
 {

@@ -376,7 +376,7 @@ void MainWindow::onApplyConfigClicked()
     int pileCount = ui->pileCountSpinBox->value();
     int unitPower = ui->unitPowerSpinBox->value() * 10; // 界面显示的是 kW，底层存储为 0.1kW 单位
     (void)oprt_ratedpwr_per_module(unitPower);
-    ui->powerSpinBox->setValue(ui->unitPowerSpinBox->value());
+    ui->powerSpinBox->setValue(ui->unitPowerSpinBox->value() - SIZING_TOLERANCE * 0.2); // 回填功率请求框，减去容差值，保持一个模块的步进频率
 
     // ========== 2. 参数合法性校验 ==========
     if (nodeCount % 2 != 0)
@@ -1469,7 +1469,7 @@ void MainWindow::showAboutDialog()
     titleLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(titleLabel);
 
-    QLabel *versionLabel = new QLabel(tr("版本：1.0.7"));
+    QLabel *versionLabel = new QLabel(tr("版本：1.0.8"));
     versionLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(versionLabel);
 
@@ -2041,31 +2041,34 @@ void MainWindow::updatePowerLimitPercent(double value)
     ui->label_powerLimitPercent->setText(QString("%1%").arg(percent, 0, 'f', 1));
 
     // 根据是否生效改变颜色
-    if (m_powerLimitActive && outputtingPower > value)
+    if (m_powerLimitActive)
     {
-        ui->label_powerLimitPercent->setStyleSheet(
-            "QLabel {"
-            "    background-color: rgba(220, 0, 0, 85);"
-            "    border: 2px solid #ff3300;"
-            "    border-radius: 4px;"
-            "    padding: 4px;"
-            "    color: #ff0040;"
-            "    font-weight: bold;"
-            "    font-size: 11pt;"
-            "}");
-    }
-    else if (m_powerLimitActive && outputtingPower < value)
-    {
-        ui->label_powerLimitPercent->setStyleSheet(
-            "QLabel {"
-            "    background-color: rgba(0, 70, 0, 90);"
-            "    border: 2px solid #2a5308;"
-            "    border-radius: 4px;"
-            "    padding: 4px;"
-            "    color: #057e42;"
-            "    font-weight: bold;"
-            "    font-size: 11pt;"
-            "}");
+        if (outputtingPower > value)
+        {
+            ui->label_powerLimitPercent->setStyleSheet(
+                "QLabel {"
+                "    background-color: rgba(220, 0, 0, 85);"
+                "    border: 2px solid #ff3300;"
+                "    border-radius: 4px;"
+                "    padding: 4px;"
+                "    color: #ff0040;"
+                "    font-weight: bold;"
+                "    font-size: 11pt;"
+                "}");
+        }
+        else
+        {
+            ui->label_powerLimitPercent->setStyleSheet(
+                "QLabel {"
+                "    background-color: rgba(0, 70, 0, 90);"
+                "    border: 2px solid #2a5308;"
+                "    border-radius: 4px;"
+                "    padding: 4px;"
+                "    color: #057e42;"
+                "    font-weight: bold;"
+                "    font-size: 11pt;"
+                "}");
+        }
     }
     else
     {
@@ -2089,12 +2092,21 @@ void MainWindow::onPowerLimitValueChanged(double value)
     ui->logTextEdit->append(QString("⚡功率限制值已修改🖍: %1 kW").arg(value, 0, 'f', 1));
     if (m_powerLimitActive)
     {
+        if (m_powerLimitValue < ui->unitPowerSpinBox->value())
+        {
+            QMessageBox::warning(this, "功率限制",
+                                 QString("限制功率 (%1 kW) 低于单模块功率 (%2 kW)，将自动调整为单模块功率值")
+                                     .arg(m_powerLimitValue, 0, 'f', 1)
+                                     .arg(ui->unitPowerSpinBox->value(), 0, 'f', 1));
+            ui->powerLimitSpinBox->setValue(ui->unitPowerSpinBox->value());
+            m_powerLimitValue = ui->unitPowerSpinBox->value();
+        }
         ui->logTextEdit->append(QString("⚠ 功率限制生效中，当前输出功率: %1 kW").arg(getOutputtingPower(), 0, 'f', 1));
         // TODO: 实现具体的功率限制逻辑
         bool success = m_topology->restrictPower((int)(m_powerLimitValue * 10));
         if (!success)
         {
-            ui->logTextEdit->append("❌功率限制失败，请检查配置并重新尝试...");
+            ui->logTextEdit->append("💡策略层未匹配功率限制");
         }
     }
 }
@@ -2114,11 +2126,14 @@ void MainWindow::onPowerLimitApplyClicked()
         ui->powerLimitSpinBox->setValue(totalPower);
         limitValue = totalPower;
     }
-
-    if (limitValue <= 0)
+    if (limitValue < ui->unitPowerSpinBox->value())
     {
-        QMessageBox::warning(this, "功率限制", "功率限制值必须大于0");
-        return;
+        QMessageBox::warning(this, "功率限制",
+                             QString("限制功率 (%1 kW) 低于单模块功率 (%2 kW)，将自动调整为单模块功率值")
+                                 .arg(limitValue, 0, 'f', 1)
+                                 .arg(totalPower, 0, 'f', 1));
+        ui->powerLimitSpinBox->setValue(ui->unitPowerSpinBox->value());
+        limitValue = ui->unitPowerSpinBox->value();
     }
 
     m_powerLimitActive = true;
@@ -2126,7 +2141,11 @@ void MainWindow::onPowerLimitApplyClicked()
     updatePowerLimitPercent(limitValue);
 
     // TODO: 实现具体的功率限制逻辑
-
+    bool success = m_topology->restrictPower((int)(m_powerLimitValue * 10));
+    if (!success)
+    {
+        ui->logTextEdit->append("💡策略层未匹配功率限制");
+    }
     ui->logTextEdit->append(QString("✅ 功率限制已生效: %1 kW (占系统总功率 %2%)")
                                 .arg(limitValue, 0, 'f', 1)
                                 .arg((limitValue / totalPower) * 100.0, 0, 'f', 1));

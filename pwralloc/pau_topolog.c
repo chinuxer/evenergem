@@ -1118,7 +1118,7 @@ static bool idlenodes_semimatrix_donatio(ID_TYPE plugid)
         ID_TYPE plugid_beta = refer_Node_Extracted(lower_beta)->plug_id;
         int shortage_beta = ID_VAIN != plugid_beta ? get_plug_shortage(plugid_beta) : 0;
         ID_TYPE successor = (int)(shortage_alpha > 0 | shortage_beta > 0) * ((shortage_alpha > shortage_beta) ? plugid_alpha : plugid_beta);
-        if (ID_VAIN == successor)
+        if (ID_VAIN == successor || plugid == successor)
         {
             continue;
         }
@@ -1161,6 +1161,10 @@ static bool idlenodes_semimatrix_donatio(ID_TYPE plugid)
 }
 static bool idlenodes_encircle_donatio(ID_TYPE plugid)
 {
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return false;
+    }
     PAU_Vector *idlenode_list = pau_vector_create(NODES_MAX_ENCIRCLE);
     if (NULL == idlenode_list)
     {
@@ -1629,11 +1633,9 @@ ID_TYPE restrictPower(size_t limitedPower)
         return ID_VAIN;
     }
     LIMITEDPWR = limitedPower;
-    int litter_quota = (OUTPUTPWR - limitedPower + UNITPWR_MAX - 1) / UNITPWR_MAX;
     // 找到充电中的各plug中占有模块数最多的plug
     ID_TYPE plugid_most = ID_VAIN;
     size_t plug_most_cnt = 0;
-    size_t plug_most_quota = 0;
     for (ID_TYPE plugid = 1; plugid <= PLUG_MAX; plugid++)
     {
         if (PLUG_IDLE == get_plug_state(plugid))
@@ -1649,17 +1651,14 @@ ID_TYPE restrictPower(size_t limitedPower)
         {
             plug_most_cnt = module_cnt;
             plugid_most = plugid;
-            plug_most_quota = plug_most_cnt * UNITPWR_MAX * litter_quota / OUTPUTPWR;
-            plug_most_quota = 0 == plug_most_quota ? 1 : plug_most_quota;
         }
     }
-    if (ID_VAIN == plugid_most)
+    if (ID_VAIN == plugid_most || 0 == plug_most_cnt)
     {
         return ID_VAIN;
     }
-    int releasepwr = get_plug_charging_power(plugid_most);
-    releasepwr -= plug_most_quota * UNITPWR_MAX;
-    releasepwr = releasepwr < UNITPWR_MAX ? UNITPWR_MAX : releasepwr;
+
+    int releasepwr = (plug_most_cnt - 1) * UNITPWR_MAX - 1 - SIZING_TOLERANCE;
     releasePower(plugid_most, releasepwr);
     update_plug_shortage_power(plugid_most);
     return plugid_most;
@@ -1712,6 +1711,7 @@ int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
     }
     collect_avatar_nodes(avatar_collcection, plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    hops_refresh(pplug->connectedNode, plugid);
     int index = 0;
     for (size_t c = 2 * NODES_MAX_ENCIRCLE + 1; c <= CONTACTOR_MAX; c++)
     {
@@ -1752,26 +1752,35 @@ int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
             if (plugid == refer_Node_Extracted(nodeid_alpha)->plug_id && plugid != refer_Node_Extracted(nodeid_beta)->plug_id)
             {
                 pobject->appendix = nodeid_alpha;
+
                 if (refer_Node_Extracted(nodeid_alpha)->pseudocycledon)
                 {
                     continue;
                 }
+                pobject->genogram = nodeid_alpha;
+                pobject->hops = get_hops_occupied(pplug->connectedNode, nodeid_alpha, plugid) + 1;
             }
             else if (plugid != refer_Node_Extracted(nodeid_alpha)->plug_id && plugid == refer_Node_Extracted(nodeid_beta)->plug_id)
             {
                 pobject->appendix = nodeid_beta;
+
                 if (refer_Node_Extracted(nodeid_beta)->pseudocycledon)
                 {
                     continue;
                 }
+                pobject->genogram = nodeid_beta;
+                pobject->hops = get_hops_occupied(pplug->connectedNode, nodeid_beta, plugid) + 1;
             }
             else if (plugid == refer_Node_Extracted(nodeid_alpha)->plug_id && plugid == refer_Node_Extracted(nodeid_beta)->plug_id)
             {
                 pobject->appendix = nodeid_alpha;
+
                 if (refer_Node_Extracted(nodeid_alpha)->pseudocycledon && refer_Node_Extracted(nodeid_beta)->pseudocycledon)
                 {
                     continue;
                 }
+                pobject->genogram = nodeid_alpha;
+                pobject->hops = get_hops_occupied(pplug->connectedNode, nodeid_alpha, plugid) + 1;
             }
         }
         else
@@ -1779,10 +1788,14 @@ int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
             if (pau_vector_contains(avatar_collcection, pcontactor->node1))
             {
                 pobject->direction = pcontactor->node2;
+                pobject->genogram = pcontactor->node1;
+                pobject->hops = 99;
             }
             if (pau_vector_contains(avatar_collcection, pcontactor->node2))
             {
                 pobject->direction = pcontactor->node1;
+                pobject->genogram = pcontactor->node2;
+                pobject->hops = 99;
             }
         }
         pobject = pmap + ++index;
@@ -1795,7 +1808,6 @@ int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
     // 找到pseudocycledon为真的节点,找出对角线接触器编号
     PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
     {
-        pau_printf("%d ", nodeid);
         if (!refer_Node_Extracted(nodeid)->pseudocycledon)
         {
             continue;
@@ -1803,7 +1815,9 @@ int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
         pobject->direction = nodeid;
         pobject->contactorid = nodeid + NODES_MAX_ENCIRCLE;
         pobject->appendix = CONTACTOR_MAX - NODES_MAX_ENCIRCLE / 2 + (nodeid > NODES_MAX_ENCIRCLE / 2 ? nodeid - NODES_MAX_ENCIRCLE / 2 : nodeid);
-
+        pobject->hops = 100;
+        struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(pobject->appendix);
+        pobject->genogram = pcontactor->node1;
         pobject = pmap + ++index;
         if (pobject > pmap_fin)
         {
@@ -1826,6 +1840,8 @@ FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
     pobject->contactorid = 254;
     pobject->direction = pplug->connectedNode;
     pobject->appendix = 0;
+    pobject->hops = 0;
+    pobject->genogram = pplug->connectedNode;
     size_t index_map = 1;
     for (size_t c = 1; c <= 3 * NODES_MAX_ENCIRCLE / 2; c++)
     {
@@ -1848,6 +1864,7 @@ FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
         int hops_node1 = get_hops_occupied(pplug->connectedNode, pcontactor->node1, plugid);
         int hops_node2 = get_hops_occupied(pplug->connectedNode, pcontactor->node2, plugid);
         (pobject + index_map)->direction = hops_node1 > hops_node2 ? pcontactor->node1 : pcontactor->node2;
+        (pobject + index_map)->genogram = hops_node1 > hops_node2 ? pcontactor->node2 : pcontactor->node1;
         (pobject + index_map)->hops = hops_node1 > hops_node2 ? hops_node1 : hops_node2;
         if (c > NODES_MAX_ENCIRCLE)
         {
@@ -1880,6 +1897,7 @@ FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
 
     // 把map中的FlowMap元素按照.hops从小到大排序
     sort_flowmap_by_hops(pobject, index_map);
+
     return pobject + index_map;
 }
 enum METABOLIN metabole_alethes(unsigned char nodeid, unsigned char relayid, FlowMap *pflow_map)

@@ -98,6 +98,8 @@ static void fillout_Outcomes(ID_TYPE chargeeID, FlowMap *map, St_PolicyTargetRes
         outcome->PolicyTargetdPowerNode[n] = (unsigned char)map[n].direction;
         outcome->PolicyTarget_RelayNo[n][0] = (unsigned char)map[n].contactorid;
         outcome->PolicyTarget_RelayNo[n][1] = (unsigned char)map[n].appendix;
+        outcome->u8Hops[n] = (unsigned char)map[n].hops;
+        outcome->u8ParentNodeNo[n] = (unsigned char)map[n].genogram;
         if (ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX)
         {
             outcome->PolicyTarget_RelayNo[n][1] = 255;
@@ -140,10 +142,12 @@ bool publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
         outcome->u8PolicyTargetPowerNodeNum = 0;
         memset(outcome->PolicyTargetdPowerNode, 0, MAXNODES_MEM_LMT);
         memset(outcome->PolicyTarget_RelayNo, 0, MAXNODES_MEM_LMT * 2);
+        memset(outcome->u8Hops, 0, MAXNODES_MEM_LMT);
+        memset(outcome->u8ParentNodeNo, 0, MAXNODES_MEM_LMT);
         pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
         return false;
     }
-    FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN, ID_VAIN, ID_VAIN}};
+    FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN, ID_VAIN, ID_VAIN, ID_VAIN}};
     FlowMap *nexttag = encircle_flowDirectioned(chargeeID, map);
     int encirclenodes_num = get_encirclenodes_num_outcomes(outcome);
     int offset = map_outlier_truncated(chargeeID, map, outcome);
@@ -173,11 +177,13 @@ bool publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
         outcome->PolicyTargetdPowerNode[n] = 0;
         outcome->PolicyTarget_RelayNo[n][0] = 0;
         outcome->PolicyTarget_RelayNo[n][1] = 0;
+        outcome->u8Hops[n] = 0;
+        outcome->u8ParentNodeNo[n] = 0;
     }
     pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
     for (int n = 0; n < outcome->u8PolicyTargetPowerNodeNum; n++)
     {
-        pau_printf("[%d] = %02d %02d %02d\r\n", n, outcome->PolicyTargetdPowerNode[n], outcome->PolicyTarget_RelayNo[n][0], outcome->PolicyTarget_RelayNo[n][1]);
+        pau_printf("[%d] = %02d %02d %02d %02d %02d\r\n", n, outcome->PolicyTargetdPowerNode[n], outcome->PolicyTarget_RelayNo[n][0], outcome->PolicyTarget_RelayNo[n][1], outcome->u8Hops[n], outcome->u8ParentNodeNo[n]);
     }
     return is_outlier;
 }
