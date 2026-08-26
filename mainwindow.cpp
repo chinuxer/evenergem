@@ -40,6 +40,8 @@
 #include <cstddef>
 #include "pau_feeder.h"
 
+extern "C" void recover_limited_power(void);
+
 static QColor makeDisabledColor(const QColor &base)
 {
     QColor hsl = base.toHsl();
@@ -1815,7 +1817,8 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
                                          const QString &topologyType,
                                          const QVector<int> &nodeOwners,
                                          const QVector<bool> &contactorStates,
-                                         const QMap<int, QPair<int, int>> &chargingPiles)
+                                         const QMap<int, QPair<int, int>> &chargingPiles,
+                                         const QVector<int> &disabledNodes)
 {
     // 校验与当前配置是否一致
     const TopologyConfig &cfg = m_topology->getConfig();
@@ -1886,7 +1889,31 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
         node.pau_data->plug_id = 0;
     }
     // 批量刷新图形显示
-
+    for (int nodeId : disabledNodes)
+    {
+        if (nodeId >= 1 && nodeId <= cfgnodeCount)
+        {
+            // 根据节点ID找到对应的节点并设置为禁用
+            if (nodeId <= cfg.nodeCount)
+            {
+                // 线环节点
+                PowerNode &node = const_cast<PowerNode &>(m_topology->getNodes()[nodeId - 1]);
+                node.pau_data->state = NODE_DISABLED;
+                node.disabled_recover = true;
+            }
+            else if (SemiHybrid == cfg.topotype)
+            {
+                // 矩阵节点
+                int matrixIdx = nodeId - cfg.nodeCount - 1;
+                if (matrixIdx >= 0 && matrixIdx < m_topology->getMatrixNodes().size())
+                {
+                    PowerNode &node = const_cast<PowerNode &>(m_topology->getMatrixNodes()[matrixIdx]);
+                    node.pau_data->state = NODE_DISABLED;
+                    node.disabled_recover = true;
+                }
+            }
+        }
+    }
     // 根据 nodeOwners 重新分配节点
     for (int i = 0; i < nodeOwners.size(); ++i)
     {
@@ -2165,6 +2192,7 @@ void MainWindow::onPowerLimitCancelClicked()
 
     // TODO: 实现取消功率限制的具体逻辑
 
+    ::recover_limited_power();
     ui->logTextEdit->append("❌功率限制已取消");
 
     // 可选：发出状态变化信号

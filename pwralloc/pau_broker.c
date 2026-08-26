@@ -585,3 +585,11 @@ size_t get_system_outputting_power(void)
 {
     return OUTPUTPWR;
 }
+size_t get_system_limited_power(void)
+{
+    return LIMITEDPWR;
+}
+void recover_limited_power(void)
+{
+    LIMITEDPWR = get_system_gross_power();
+}

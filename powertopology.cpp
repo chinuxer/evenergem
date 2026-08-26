@@ -10,7 +10,7 @@
 
 #define __IMPORT_DATAFEEDER__
 #include "pau_feeder.h"
-
+extern "C" size_t get_system_limited_power(void);
 SimpleTopology::SimpleTopology(QObject *parent)
     : QObject(parent)
 {
@@ -140,9 +140,9 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
         qWarning() << "无效的充电桩ID:" << pileId;
         return false;
     }
-    int totalpower_limit = ::get_system_gross_power();
+    int totalpower = ::get_system_gross_power();
 
-    if (requiredPower < 0 || requiredPower > totalpower_limit)
+    if (requiredPower < 0 || requiredPower > totalpower)
     {
         qWarning() << "无效的功率请求:" << requiredPower;
         return false;
@@ -155,17 +155,22 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
             QStringLiteral("数据库已损坏，无法继续分配"));
         return false;
     }
-    requiredPower += m_piles[pileId - 1].pau_data->requiredPower;
-    if (requiredPower > totalpower_limit)
+    int outputPower = ::get_system_outputting_power();
+    int limitedPower = ::get_system_limited_power();
+    if (requiredPower + outputPower > limitedPower)
     {
-
-        pau_printf("请求功率超出范围 %d", requiredPower);
-        requiredPower = totalpower_limit;
+        requiredPower = requiredPower + outputPower - limitedPower + m_piles[pileId - 1].pau_data->requiredPower;
         QMessageBox::warning(
             nullptr,
             QStringLiteral("非法操作"),
-            QStringLiteral("充电桩%1请求功率超出系统容量,已调整为%2kW").arg(pileId).arg(requiredPower / 10.0));
+            QStringLiteral("充电桩%1请求功率超出功率分配限制").arg(pileId));
+        return false;
     }
+    else
+    {
+        requiredPower = m_piles[pileId - 1].pau_data->requiredPower + requiredPower;
+    }
+
     bool retval = ::requestPower(pileId, requiredPower);
     linkage_publisher(pileId);
     emit topologyChanged();

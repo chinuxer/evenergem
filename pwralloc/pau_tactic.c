@@ -121,8 +121,33 @@ void print_outcomes(ID_TYPE plugid)
     bin2hex_left_pad(string_copie_stock, cont_hex_str); // Reuse buffer for hex string
 
     offset += sprintf(log_buffer + offset, "{%s}", cont_hex_str);
+    // 5.@不可用节点@
+    char disabled_nodes_str[MAXNODES_MEM_LMT * 3 + 1] = {'\0'};
+    int disabled_count = 0;
 
-    // 5. Charging Plugs Info
+    for (int i = 1; i <= NODE_MAX; i++)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(i);
+        if (pnode && (pnode->state == NODE_DISABLED || pnode->state == NODE_OUTORDER))
+        {
+            // 每个节点占两位，不足两位前面补0
+            snprintf(disabled_nodes_str + strlen(disabled_nodes_str),
+                     sizeof(disabled_nodes_str) - strlen(disabled_nodes_str),
+                     "%02d", i);
+            disabled_count++;
+        }
+    }
+
+    // 添加不可用节点信息到日志缓冲区
+    if (disabled_count > 0)
+    {
+        offset += sprintf(log_buffer + offset, "@%s@", disabled_nodes_str);
+    }
+    else
+    {
+        offset += sprintf(log_buffer + offset, "@@");
+    }
+    // 6. Charging Plugs Info
     // Format: [Hex(ID + Power(5) + Prior(1))]
     for (int i = 1; i <= PLUG_MAX; i++)
     {
@@ -146,7 +171,7 @@ void print_outcomes(ID_TYPE plugid)
         }
     }
 
-    // 6. Footer
+    // 7. Footer
     offset += sprintf(log_buffer + offset, EPI_TELEI_OMEGA);
 
     // Print the result

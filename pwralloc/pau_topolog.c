@@ -1645,6 +1645,7 @@ ID_TYPE restrictPower(size_t limitedPower)
     }
 
     int releasepwr = (plug_most_cnt - 1) * UNITPWR_MAX - 1 - SIZING_TOLERANCE;
+    pau_printf("[TACTIC] restrictPower plugid:%d limitedpwr:%d current charging modules:%d\r\n", plugid_most, limitedPower, plug_most_cnt);
     releasePower(plugid_most, releasepwr);
     update_plug_shortage_power(plugid_most);
     return plugid_most;

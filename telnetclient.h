@@ -23,7 +23,8 @@ signals:
                                const QString &topologyType,
                                const QVector<int> &nodeOwners,
                                const QVector<bool> &contactorStates,
-                               const QMap<int, QPair<int, int>> &chargingPiles); // 桩id -> (requiredPower, priority)
+                               const QMap<int, QPair<int, int>> &chargingPiles,
+                               const QVector<int> &disabledNodes);
 
 private slots:
     void onConnected();

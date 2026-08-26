@@ -64,7 +64,8 @@ private slots:
                                  const QString &topologyType,
                                  const QVector<int> &nodeOwners,
                                  const QVector<bool> &contactorStates,
-                                 const QMap<int, QPair<int, int>> &chargingPiles);
+                                 const QMap<int, QPair<int, int>> &chargingPiles,
+                                 const QVector<int> &disabledNodes);
     void onModeSliderChanged(int value);
 
     void onPowerLimitApplyClicked();
