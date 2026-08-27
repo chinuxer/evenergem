@@ -762,13 +762,19 @@ void MainWindow::setupGraphicsScene()
         QPointF pos1 = calculateNodePosition(contactor.pau_data->node1);
         QPointF pos2 = calculateNodePosition(contactor.pau_data->node2);
         QGraphicsLineItem *line;
+        QGraphicsLineItem *hitArea;
+        QPen hitPen;
         if (i < config.nodeCount)
         {
             line = new QGraphicsLineItem(pos1.x(), pos1.y(), pos2.x(), pos2.y());
+            hitArea = new QGraphicsLineItem(pos1.x(), pos1.y(), pos2.x(), pos2.y());
+            hitPen = QPen(Qt::transparent, 25); // 25px宽的透明线，用于鼠标交互
         }
         else
         {
             line = new QGraphicsLineItem(pos1.x(), pos1.y(), config.center.x(), config.center.y());
+            hitArea = new QGraphicsLineItem(pos1.x(), pos1.y(), config.center.x(), config.center.y());
+            hitPen = QPen(Qt::transparent, 15);
         }
 
         // 前一半是环形接触器 <gray>，后一半是对角线接触器<darkgray>
@@ -790,6 +796,12 @@ void MainWindow::setupGraphicsScene()
         if (SemiHybrid != m_topologyType || i < config.nodeCount)
         {
             m_scene->addItem(line);
+
+            hitPen.setCapStyle(Qt::RoundCap);
+            hitArea->setPen(hitPen);
+            hitArea->setToolTip(line->toolTip());   // 复制相同的ToolTip
+            hitArea->setZValue(line->zValue() + 1); // 稍微高一点，确保在最前面接收鼠标事件
+            m_scene->addItem(hitArea);
         }
         m_contactorItems[i] = line;
     }
@@ -853,7 +865,9 @@ void MainWindow::setupGraphicsScene()
             const auto &contactor = contactors[i + matrix_contactors_num + 2 * config.nodeCount];
             QGraphicsLineItem *connLine = new QGraphicsLineItem(
                 m_matrixNodeItems[i]->x(), m_matrixNodeItems[i]->y(), m_jointItems[i]->x(), m_jointItems[i]->y());
-            QLinearGradient grad(m_matrixNodeItems[i]->x(), m_matrixNodeItems[i]->y(), m_jointItems[i]->x(), m_jointItems[i]->y());
+            QGraphicsLineItem *hitArea = new QGraphicsLineItem(
+                m_matrixNodeItems[i]->x(), m_matrixNodeItems[i]->y(), m_jointItems[i]->x(), m_jointItems[i]->y() - 160);
+            QLinearGradient grad(m_matrixNodeItems[i]->x(), m_matrixNodeItems[i]->y(), m_jointItems[i]->x(), m_jointItems[i]->y() + 300);
             grad.setColorAt(0, QColor(200, 200, 200, 255)); // 起点：完全不透明
             grad.setColorAt(1, QColor(200, 200, 200, 0));   // 终点：完全透明
 
@@ -871,6 +885,12 @@ void MainWindow::setupGraphicsScene()
                                      .arg(i + 1, 2, 10, QChar('0')));
 
             m_scene->addItem(connLine);
+            QPen hitPen(Qt::transparent, 20); // 20px宽的透明线，用于鼠标交互
+            hitPen.setCapStyle(Qt::RoundCap);
+            hitArea->setPen(hitPen);
+            hitArea->setToolTip(connLine->toolTip());   // 复制相同的ToolTip
+            hitArea->setZValue(connLine->zValue() + 1); // 稍微高一点，确保在最前面接收鼠标事件
+            m_scene->addItem(hitArea);
             m_koinonItems[i] = connLine;
         }
         for (int i = 0; i < config.nodeCount / 2; i++)
@@ -897,6 +917,7 @@ void MainWindow::setupGraphicsScene()
             {
                 const auto &contactor = contactors[contactorIdx + 2 * config.nodeCount];
                 QGraphicsLineItem *connLine = new QGraphicsLineItem(m_matrixNodeItems[node1 - 1]->x(), m_matrixNodeItems[node1 - 1]->y(), m_matrixNodeItems[node2 - 1]->x(), m_matrixNodeItems[node1 - 1]->y());
+                QGraphicsLineItem *hitArea = new QGraphicsLineItem(m_matrixNodeItems[node1 - 1]->x(), m_matrixNodeItems[node1 - 1]->y(), m_matrixNodeItems[node2 - 1]->x(), m_matrixNodeItems[node1 - 1]->y());
                 connLine->setPen(QPen(Qt::lightGray, 1, Qt::DotLine));
                 connLine->setData(keyNode1, node1);
                 connLine->setData(keyNode2, node2);
@@ -907,6 +928,12 @@ void MainWindow::setupGraphicsScene()
                 connLine->setZValue(80 - contactorIdx);
                 connLine->setData(vislevel, 80 - contactorIdx);
                 m_scene->addItem(connLine);
+                QPen hitPen(Qt::transparent, 15); // 25px宽的透明线，用于鼠标交互
+                hitPen.setCapStyle(Qt::RoundCap);
+                hitArea->setPen(hitPen);
+                hitArea->setToolTip(connLine->toolTip());   // 复制相同的ToolTip
+                hitArea->setZValue(connLine->zValue() + 1); // 稍微高一点，确保在最前面接收鼠标事件
+                m_scene->addItem(hitArea);
                 m_semiMatrixContactorItems[contactorIdx] = connLine;
 
                 QGraphicsRectItem *item = new QGraphicsRectItem(-4, -4, 8, 8);
