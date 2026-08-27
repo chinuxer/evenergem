@@ -157,7 +157,8 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
     }
     int outputPower = ::get_system_outputting_power();
     int limitedPower = ::get_system_limited_power();
-    if (requiredPower + outputPower > limitedPower)
+    int grossPower = ::get_system_gross_power();
+    if (requiredPower + outputPower > limitedPower && limitedPower < grossPower)
     {
         requiredPower = requestpwr_limited_matching(pileId, requiredPower);
         QMessageBox::warning(
