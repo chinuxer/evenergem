@@ -1614,11 +1614,11 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
 
 ID_TYPE restrictPower(size_t limitedPower)
 {
+    LIMITEDPWR = limitedPower;
     if (OUTPUTPWR < limitedPower)
     {
         return ID_VAIN;
     }
-    LIMITEDPWR = limitedPower;
     // 找到充电中的各plug中占有模块数最多的plug
     ID_TYPE plugid_most = ID_VAIN;
     size_t plug_most_cnt = 0;

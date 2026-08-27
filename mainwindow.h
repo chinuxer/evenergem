@@ -51,6 +51,7 @@ private slots:
     void onHelpGuideTriggered();
     void onNodeCapacitySettingsTriggered();
     void onContactorLoadSettingsTriggered();
+    void showContactorLoadDialog();
     // 手动操作测试
     void onAllocateNodeClicked();
     void onReleaseNodeClicked();

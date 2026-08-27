@@ -403,7 +403,8 @@ int get_node_module_cnt(ID_TYPE nodeid)
     {
         return -1;
     }
-    return refer_Node_Extracted(nodeid)->moudle_box.size;
+    int available = refer_Node_Extracted(nodeid)->power_available;
+    return available / UNITPWR_MAX + (int)(available % UNITPWR_MAX != 0);
 }
 int get_plug_charging_modules_cnt(ID_TYPE plugid)
 {
@@ -428,7 +429,7 @@ size_t get_allover_modules_cnt(void)
     size_t ret = 0;
     for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
     {
-        ret += get_node_module_cnt(nodeid);
+        ret += refer_Node_Extracted(nodeid)->moudle_box.size;
     }
     return ret;
 }
@@ -591,5 +592,45 @@ size_t get_system_limited_power(void)
 }
 void recover_limited_power(void)
 {
-    LIMITEDPWR = get_system_gross_power();
+    gpPlugsArray->grosspwr = get_system_gross_power();
+    gpPlugsArray->limitedpwr = get_system_gross_power();
+}
+size_t get_system_charging_modules_cnt(ID_TYPE exclude_plugid)
+{
+    size_t ret = 0;
+    for (ID_TYPE plugid = 1; plugid <= PLUG_MAX; plugid++)
+    {
+        if (plugid != exclude_plugid)
+        {
+            ret += get_plug_charging_modules_cnt(plugid);
+        }
+    }
+    return ret;
+}
+
+int requestpwr_limited_matching(ID_TYPE plugid, int required_power)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return 0;
+    }
+    if (ASSERT_FLOW_EMBARGO)
+    {
+        return required_power;
+    }
+    int matched_requestpwr = required_power;
+    size_t exclude_modules_cnt = get_system_charging_modules_cnt(plugid);
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    int limited_power = get_system_limited_power();
+    size_t limited_modules_cnt = GETQUOTA(limited_power);
+    size_t required_modules_cnt = GETQUOTA(required_power);
+    if (required_modules_cnt + exclude_modules_cnt > limited_modules_cnt)
+    {
+        pau_log_printf("[%s] plugid:%d %d + %d  >limited:%d", __FUNCTION__, plugid, required_modules_cnt, exclude_modules_cnt, limited_modules_cnt);
+        size_t extra_quota = required_modules_cnt + exclude_modules_cnt - limited_modules_cnt;
+        required_modules_cnt -= extra_quota;
+        required_modules_cnt = required_modules_cnt > 1 ? required_modules_cnt : 1;
+        matched_requestpwr = required_modules_cnt * UNITPWR_MAX - SIZING_TOLERANCE - 1;
+    }
+    return matched_requestpwr;
 }

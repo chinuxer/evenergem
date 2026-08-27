@@ -159,11 +159,12 @@ bool SimpleTopology::requestPower(int pileId, int requiredPower)
     int limitedPower = ::get_system_limited_power();
     if (requiredPower + outputPower > limitedPower)
     {
-        requiredPower = requiredPower + outputPower - limitedPower + m_piles[pileId - 1].pau_data->requiredPower;
+        requiredPower = requestpwr_limited_matching(pileId, requiredPower);
         QMessageBox::warning(
             nullptr,
             QStringLiteral("非法操作"),
             QStringLiteral("充电桩%1请求功率超出功率分配限制").arg(pileId));
+        qWarning() << "充电桩" << pileId << "请求功率(" << requiredPower << "+" << outputPower << ")超出限制" << limitedPower;
         return false;
     }
     else

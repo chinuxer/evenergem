@@ -40,8 +40,6 @@
 #include <cstddef>
 #include "pau_feeder.h"
 
-extern "C" void recover_limited_power(void);
-
 static QColor makeDisabledColor(const QColor &base)
 {
     QColor hsl = base.toHsl();
@@ -440,7 +438,7 @@ void MainWindow::onApplyConfigClicked()
         ID_TYPE nodeId = i + 1;
         (void)::oprt_node_module_count_set(nodeId, static_cast<size_t>(capacities[i]));
     }
-
+    ::recover_limited_power();
     // ========== 8. 清除旧的发布结果（避免显示过时状态） ==========
     for (int n = 1; n <= pileCount; ++n)
     {
@@ -991,6 +989,8 @@ void MainWindow::setupGraphicsScene()
         QGraphicsLineItem *connLine = new QGraphicsLineItem(
             nodePos.x(), nodePos.y(), pilePos.x(), pilePos.y());
         connLine->setPen(QPen(Qt::lightGray, 2, Qt::DashDotLine));
+        connLine->setToolTip(QString("接触器编号 0%1")
+                                 .arg(i + 1, 2, 10, QChar('0')));
         m_scene->addItem(connLine);
         m_pileConnections[i] = connLine;
     }
@@ -1713,7 +1713,7 @@ void MainWindow::onNodeCapacitySettingsTriggered()
         return;
     }
     for (int i = 0; i < updatedCapacities.size(); ++i)
-        (void)oprt_node_module_count_set(i + 1, static_cast<size_t>(updatedCapacities.at(i)));
+        (void)::oprt_node_module_count_set(i + 1, static_cast<size_t>(updatedCapacities.at(i)));
 
     onTopologyChanged();
     ui->logTextEdit->append(tr("✅ 已更新 %1 个节点的模块容量").arg(updatedCapacities.size()));
@@ -1721,7 +1721,7 @@ void MainWindow::onNodeCapacitySettingsTriggered()
 
 void MainWindow::onContactorLoadSettingsTriggered()
 {
-    QMessageBox::information(this, tr("接触器负载"), tr("接触器负载设置将在后续版本提供。"));
+    showContactorLoadDialog();
 }
 void MainWindow::onToggleNodeEnableClicked()
 {
@@ -2197,4 +2197,326 @@ void MainWindow::onPowerLimitCancelClicked()
 
     // 可选：发出状态变化信号
     emit m_topology->topologyChanged();
+}
+
+void MainWindow::showContactorLoadDialog()
+{
+    // 获取当前拓扑类型
+    TOPOTYPE topoType = m_topologyType;
+    bool isSemiHybrid = (SemiHybrid == topoType);
+    bool isRing = (CakraWheel == topoType);
+    bool isFullMatrix = (FullMatrix == topoType);
+
+    // 创建对话框
+    QDialog dialog(this);
+    dialog.setWindowTitle("接触器负载设置");
+    dialog.setMinimumWidth(480);
+    dialog.setStyleSheet(
+        "QDialog { background-color: #101827; }"
+        "QLabel { color: #a3ccf5; font-weight: bold; }"
+        "QGroupBox {"
+        "    font-weight: bold;"
+        "    border: 1px solid #2a82da;"
+        "    border-radius: 6px;"
+        "    margin-top: 10px;"
+        "    padding-top: 8px;"
+        "    color: #a3ccf5;"
+        "}"
+        "QGroupBox::title {"
+        "    subcontrol-origin: margin;"
+        "    left: 10px;"
+        "    padding: 0 6px 0 6px;"
+        "}"
+        "QSpinBox {"
+        "    background-color: #1a1a2e;"
+        "    border: 1px solid #2a82da;"
+        "    border-radius: 4px;"
+        "    color: #00e0ff;"
+        "    padding: 4px;"
+        "    selection-background-color: #2a82da;"
+        "}"
+        "QSpinBox::up-button, QSpinBox::down-button {"
+        "    background-color: #3b5278;"
+        "    width: 18px;"
+        "}"
+        "QSpinBox::up-button:hover, QSpinBox::down-button:hover {"
+        "    background-color: #4c6a98;"
+        "}"
+        "QPushButton {"
+        "    background-color: #1e5ca6;"
+        "    border: 1px solid #2a82da;"
+        "    border-radius: 5px;"
+        "    color: white;"
+        "    padding: 6px 16px;"
+        "    font-weight: bold;"
+        "}"
+        "QPushButton:hover {"
+        "    background-color: #2a82da;"
+        "}"
+        "QLabel#infoLabel {"
+        "    color: #ffd700;"
+        "    font-size: 10pt;"
+        "    font-weight: normal;"
+        "}"
+        "QLabel#descLabel {"
+        "    color: #8888aa;"
+        "    font-size: 9pt;"
+        "    font-weight: normal;"
+        "}"
+        "QSpinBox::up-arrow {"
+        "    image: url(:/spinbox_up_arrow.svg);"
+        "    width: 12px;"
+        "    height: 8px;"
+        "}"
+        "QSpinBox::down-arrow {"
+        "    image: url(:/spinbox_down_arrow.svg);"
+        "    width: 12px;"
+        "    height: 8px;"
+        "}");
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(&dialog);
+
+    // 顶部信息
+    QString topoName;
+    switch (topoType)
+    {
+    case FullMatrix:
+        topoName = "全矩阵结构";
+        break;
+    case CakraWheel:
+        topoName = "环形结构";
+        break;
+    case SemiHybrid:
+        topoName = "半矩阵半环形结构";
+        break;
+    default:
+        topoName = "未知结构";
+        break;
+    }
+
+    QLabel *infoLabel = new QLabel(QString("当前拓扑: %1").arg(topoName), &dialog);
+    infoLabel->setObjectName("infoLabel");
+    infoLabel->setAlignment(Qt::AlignCenter);
+    mainLayout->addWidget(infoLabel);
+
+    // 存储所有SpinBox的指针和对应的标签
+    struct ContactorSetting
+    {
+        QSpinBox *spinBox;
+        QLabel *label;
+        QString name;
+        int defaultValue;
+    };
+    QVector<ContactorSetting> settings;
+
+    // ========== 1. 充电桩直连接触器设置（所有拓扑都有） ==========
+    QGroupBox *directGroup = new QGroupBox("充电桩直连接触器限流设置", &dialog);
+    QHBoxLayout *directLayout = new QHBoxLayout(directGroup);
+
+    QLabel *directLabel = new QLabel("接触器编号0XX:", directGroup);
+    directLabel->setStyleSheet("color: #a3ccf5;");
+    QLabel *directDesc = new QLabel("(充电桩与直连节点之间)", directGroup);
+    directDesc->setObjectName("descLabel");
+    QSpinBox *directSpinBox = new QSpinBox(directGroup);
+    directSpinBox->setRange(0, 2000);
+    directSpinBox->setSingleStep(50);
+    directSpinBox->setSuffix(" A");
+    directSpinBox->setValue(2000); // 默认2000A（直连接触器容量较大）
+
+    directLayout->addWidget(directLabel);
+    directLayout->addWidget(directSpinBox);
+    directLayout->addWidget(directDesc);
+    directLayout->addStretch();
+
+    mainLayout->addWidget(directGroup);
+
+    ContactorSetting directSetting;
+    directSetting.spinBox = directSpinBox;
+    directSetting.label = directLabel;
+    directSetting.name = "直连接触器";
+    directSetting.defaultValue = 2000;
+    settings.append(directSetting);
+
+    // ========== 2. 环形接触器设置（环形和半矩阵有） ==========
+    if (isRing || isSemiHybrid)
+    {
+        QGroupBox *ringGroup = new QGroupBox("环形接触器限流设置", &dialog);
+        QHBoxLayout *ringLayout = new QHBoxLayout(ringGroup);
+
+        QLabel *ringLabel = new QLabel("接触器编号1XX:", ringGroup);
+        ringLabel->setStyleSheet("color: #a3ccf5;");
+        QLabel *ringDesc = new QLabel("(线环相邻节点之间)", ringGroup);
+        ringDesc->setObjectName("descLabel");
+        QSpinBox *ringSpinBox = new QSpinBox(ringGroup);
+        ringSpinBox->setRange(0, 2000);
+        ringSpinBox->setSingleStep(50);
+        ringSpinBox->setSuffix(" A");
+        ringSpinBox->setValue(2000); // 默认2000A
+
+        ringLayout->addWidget(ringLabel);
+        ringLayout->addWidget(ringSpinBox);
+        ringLayout->addWidget(ringDesc);
+        ringLayout->addStretch();
+
+        mainLayout->addWidget(ringGroup);
+
+        ContactorSetting ringSetting;
+        ringSetting.spinBox = ringSpinBox;
+        ringSetting.label = ringLabel;
+        ringSetting.name = "环形接触器";
+        ringSetting.defaultValue = 200;
+        settings.append(ringSetting);
+    }
+
+    // ========== 3. 对径接触器设置（环形和半矩阵有） ==========
+    if (isRing || isSemiHybrid)
+    {
+        QGroupBox *diagGroup = new QGroupBox("对径接触器限流设置", &dialog);
+        QHBoxLayout *diagLayout = new QHBoxLayout(diagGroup);
+
+        QLabel *diagLabel = new QLabel("接触器编号2XX:", diagGroup);
+        diagLabel->setStyleSheet("color: #a3ccf5;");
+        QLabel *diagDesc = new QLabel("(线环对径节点之间)", diagGroup);
+        diagDesc->setObjectName("descLabel");
+        QSpinBox *diagSpinBox = new QSpinBox(diagGroup);
+        diagSpinBox->setRange(0, 2000);
+        diagSpinBox->setSingleStep(50);
+        diagSpinBox->setSuffix(" A");
+        diagSpinBox->setValue(2000); // 默认2000A
+
+        diagLayout->addWidget(diagLabel);
+        diagLayout->addWidget(diagSpinBox);
+        diagLayout->addWidget(diagDesc);
+        diagLayout->addStretch();
+
+        mainLayout->addWidget(diagGroup);
+
+        ContactorSetting diagSetting;
+        diagSetting.spinBox = diagSpinBox;
+        diagSetting.label = diagLabel;
+        diagSetting.name = "对径接触器";
+        diagSetting.defaultValue = 200;
+        settings.append(diagSetting);
+    }
+
+    // ========== 4. 矩阵-环形连接接触器设置（仅半矩阵有） ==========
+    if (isSemiHybrid || isFullMatrix)
+    {
+        QGroupBox *matrixGroup = new QGroupBox("矩阵接触器限流设置", &dialog);
+        QHBoxLayout *matrixLayout = new QHBoxLayout(matrixGroup);
+
+        QLabel *matrixLabel = new QLabel("接触器编号3XX:", matrixGroup);
+        matrixLabel->setStyleSheet("color: #a3ccf5;");
+        QString matrixDescText = isSemiHybrid ? "(半矩阵节点之间)" : "(全矩阵节点之间)";
+        QLabel *matrixDesc = new QLabel(matrixDescText, matrixGroup);
+        matrixDesc->setObjectName("descLabel");
+        QSpinBox *matrixSpinBox = new QSpinBox(matrixGroup);
+        matrixSpinBox->setRange(0, 2000);
+        matrixSpinBox->setSingleStep(50);
+        matrixSpinBox->setSuffix(" A");
+        matrixSpinBox->setValue(2000); // 默认2000A
+
+        matrixLayout->addWidget(matrixLabel);
+        matrixLayout->addWidget(matrixSpinBox);
+        matrixLayout->addWidget(matrixDesc);
+        matrixLayout->addStretch();
+
+        mainLayout->addWidget(matrixGroup);
+
+        ContactorSetting matrixSetting;
+        matrixSetting.spinBox = matrixSpinBox;
+        matrixSetting.label = matrixLabel;
+        matrixSetting.name = "矩阵接触器";
+        matrixSetting.defaultValue = 150;
+        settings.append(matrixSetting);
+    }
+
+    // ========== 5. 矩阵接触器设置（半矩阵和全矩阵有） ==========
+
+    if (isSemiHybrid)
+    {
+        QGroupBox *matrixRingGroup = new QGroupBox("矩阵-环形连接接触器限流设置", &dialog);
+        QHBoxLayout *matrixRingLayout = new QHBoxLayout(matrixRingGroup);
+
+        QLabel *matrixRingLabel = new QLabel("接触器编号4XX:", matrixRingGroup);
+        matrixRingLabel->setStyleSheet("color: #a3ccf5;");
+        QLabel *matrixRingDesc = new QLabel("(矩阵节点与线环节点之间)", matrixRingGroup);
+        matrixRingDesc->setObjectName("descLabel");
+        QSpinBox *matrixRingSpinBox = new QSpinBox(matrixRingGroup);
+        matrixRingSpinBox->setRange(0, 2000);
+        matrixRingSpinBox->setSingleStep(50);
+        matrixRingSpinBox->setSuffix(" A");
+        matrixRingSpinBox->setValue(2000); // 默认2000A
+
+        matrixRingLayout->addWidget(matrixRingLabel);
+        matrixRingLayout->addWidget(matrixRingSpinBox);
+        matrixRingLayout->addWidget(matrixRingDesc);
+        matrixRingLayout->addStretch();
+
+        mainLayout->addWidget(matrixRingGroup);
+
+        ContactorSetting matrixRingSetting;
+        matrixRingSetting.spinBox = matrixRingSpinBox;
+        matrixRingSetting.label = matrixRingLabel;
+        matrixRingSetting.name = "矩阵-环形连接接触器";
+        matrixRingSetting.defaultValue = 100;
+        settings.append(matrixRingSetting);
+    }
+    // 添加弹性空间
+    mainLayout->addStretch();
+
+    // 添加按钮
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    QPushButton *applyBtn = new QPushButton("应用", &dialog);
+    QPushButton *cancelBtn = new QPushButton("取消", &dialog);
+    QPushButton *resetBtn = new QPushButton("恢复默认", &dialog);
+
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(resetBtn);
+    buttonLayout->addWidget(applyBtn);
+    buttonLayout->addWidget(cancelBtn);
+    mainLayout->addLayout(buttonLayout);
+
+    // 连接信号槽
+    connect(resetBtn, &QPushButton::clicked, [&]()
+            {
+        for (auto &setting : settings) {
+            setting.spinBox->setValue(setting.defaultValue);
+        } });
+
+    connect(applyBtn, &QPushButton::clicked, [&]()
+            {
+        // 应用设置
+        QStringList logMessages;
+        
+        for (const auto &setting : settings) {
+            int value = setting.spinBox->value();
+            logMessages << QString("%1限流设置为 %2 A").arg(setting.name).arg(value);
+            
+            // ========== 调用底层接口设置接触器限流 ==========
+            // 这里根据实际需要调用相应的API
+            // 例如：
+            // if (setting.name == "直连接触器") {
+            //     set_contactor_limit(CONTACTOR_TYPE_DIRECT, value);
+            // } else if (setting.name == "环形接触器") {
+            //     set_contactor_limit(CONTACTOR_TYPE_RING, value);
+            // } else if (setting.name == "对径接触器") {
+            //     set_contactor_limit(CONTACTOR_TYPE_DIAGONAL, value);
+            // } else if (setting.name == "矩阵-环形连接接触器") {
+            //     set_contactor_limit(CONTACTOR_TYPE_MATRIX_RING, value);
+            // } else if (setting.name == "矩阵接触器") {
+            //     set_contactor_limit(CONTACTOR_TYPE_MATRIX, value);
+            // }
+        }
+        
+        // 记录日志
+        for (const QString &msg : logMessages) {
+            ui->logTextEdit->append(QString("✓ %1").arg(msg));
+        }
+        
+        dialog.accept(); });
+
+    connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
+
+    dialog.exec();
 }

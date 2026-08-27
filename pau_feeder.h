@@ -19,6 +19,8 @@ extern "C"
     void pull_NodefromPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid);
     size_t get_system_gross_power(void);
     size_t get_system_outputting_power(void);
+    int requestpwr_limited_matching(ID_TYPE, int);
+    void recover_limited_power(void);
 }
 #ifdef __IMPORT_DATAFEEDER__
 St_PolicyTargetResult gtarget_result[MAXNODES_MEM_LMT] = {0};
