@@ -183,6 +183,11 @@ void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs)
     }
 
     pconfig_graph = (typeof(pconfig_graph))pau_calloc(sizeof(*pconfig_graph), __func__);
+    if (NULL == pconfig_graph)
+    {
+        pau_printf("ERROR: Memory allocation failed for pconfig_graph\n");
+        return;
+    }
     pau_printf("PAU_DIRECTED_CONFIG_INIT: %x\n", sizeof(*pconfig_graph));
     pconfig_graph->nodeCount = nodes;
     pconfig_graph->plugCount = plugs;
@@ -283,5 +288,3 @@ bool graphconfig_Canaries_Twittering(void)
 {
     return (pconfig_graph->front_canary == FRONT_MAGICWORD && pconfig_graph->rear_canary == REAR_MAGICWORD);
 }
-
-

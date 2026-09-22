@@ -259,10 +259,12 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
 
         int occupied_count_neighbors = 0;
         int hops = -1;
-        int module_adaptive = get_node_module_cnt(nodeid);
-        module_adaptive = module_adaptive <= quota ? (WEIGHT_HIERARCHY - 1) - quota + module_adaptive : (WEIGHT_HIERARCHY - 1) - module_adaptive;
-        module_adaptive = module_adaptive <= 0 ? 0 : module_adaptive;
+        int module_adaptive = get_node_available_power(nodeid);
+        module_adaptive = quota - module_adaptive;
+        module_adaptive = module_adaptive < 0 ? -1 * module_adaptive : module_adaptive;
+        module_adaptive /= 100; // 10kW颗粒度
         module_adaptive = module_adaptive >= (WEIGHT_HIERARCHY - 1) ? (WEIGHT_HIERARCHY - 1) : module_adaptive;
+        module_adaptive = WEIGHT_HIERARCHY - 1 - module_adaptive;
         for (int i = 0; i < 3; i++)
         {
             neighbor_nodeid = neighbors[i];
@@ -292,6 +294,9 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         score += WEIGHT_5 * (nodeid == get_plug_connectednode(plugid) && 0 == get_dist(nodeid) ? 1 : 0);
         score = ID_VAIN < get_node_chargingplugid(nodeid) ? 0 : score; // 如果是占用的节点,并且优先级大于等于本桩的优先级
         score = is_node_pseudocycledon(nodeid) ? 0 : score;
+#ifdef POLICY_DISSABLEDNODES_BYPASS
+        score = get_node_state(nodeid) != NODE_IDLEFREE ? 0 : score;
+#endif
         return score;
     }
     case SENARIO_PREEMPT:

@@ -126,7 +126,7 @@ void expseudous_eisalethes(struct Alloc_plugObj *pplug)
  */
 
 static void
-acyclic_tree_building(struct Alloc_plugObj *pplug)
+acyclic_tree_building_(struct Alloc_plugObj *pplug)
 {
     if (pau_vector_size(pplug->allocatedNodes) == 0)
     {
@@ -248,6 +248,260 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
         }
     }
 
+    for (int i = NODES_MAX_ENCIRCLE + 1; i <= 2 * NODES_MAX_ENCIRCLE; i++)
+    {
+        struct Alloc_contactorObj *c = refer_Contactor_Extracted(i);
+        struct Alloc_nodeObj *n1 = refer_Node_Extracted(c->node1);
+        struct Alloc_nodeObj *n2 = refer_Node_Extracted(c->node2);
+        if (pplug->id != n1->plug_id || pplug->id != n2->plug_id)
+        {
+            continue;
+        }
+        if (c->isClosed)
+        {
+            if (i > NODES_MAX_ENCIRCLE && i <= 3 * NODES_MAX_ENCIRCLE / 2)
+            {
+                refer_Contactor_Extracted(i + NODES_MAX_ENCIRCLE / 2)->isClosed = true;
+            }
+            else
+            {
+                refer_Contactor_Extracted(i - NODES_MAX_ENCIRCLE / 2)->isClosed = true;
+            }
+        }
+    }
+}
+
+/**
+ * @brief 更新某个充电桩相关的接触器状态：构建无环生成树
+ *
+ * 原则：
+ *   1. 优先树形分叉，避免长链
+ *   2. 分叉点尽量靠近直连根节点（BFS距离最小）
+ *   3. 各分叉节点数量尽量平均
+ *   4. 环形边优先于对角线边
+ *
+ * 算法：按 BFS 距离逐层建树 + 均衡分支
+ *
+ * @param pplug 充电桩对象
+ */
+static void
+acyclic_tree_building(struct Alloc_plugObj *pplug)
+{
+    if (pau_vector_size(pplug->allocatedNodes) == 0)
+    {
+        return;
+    }
+
+    /* ── 0. 先断开所有相关接触器 ── */
+    for (int i = 1; i <= 2 * NODES_MAX_ENCIRCLE; i++)
+    {
+        struct Alloc_contactorObj *c = refer_Contactor_Extracted(i);
+        if (pau_vector_contains(pplug->allocatedNodes, c->node1) &&
+            pau_vector_contains(pplug->allocatedNodes, c->node2))
+        {
+            c->isClosed = false;
+        }
+    }
+
+    /* ── 1. 以直连节点为根做 BFS，得到距离层级 ── */
+    ID_TYPE root = pplug->connectedNode;
+    if (!ASSERT_NODE_ID_ENCIRCLE(root))
+    {
+        return;
+    }
+
+    /* 距离表：仅对已分配节点有效 */
+    int dist[MAXNODES_MEM_LMT + 1];
+    memset(dist, -1, sizeof(dist));
+
+    /* 手写队列 */
+    ID_TYPE queue[MAXNODES_MEM_LMT];
+    int qh = 0, qt = 0;
+
+    dist[root] = 0;
+    queue[qt++] = root;
+
+    while (qh < qt)
+    {
+        ID_TYPE u = queue[qh++];
+        ID_TYPE neighbors[3] = {0};
+        get_neighbors(u, neighbors);
+        for (int i = 0; i < 3; i++)
+        {
+            ID_TYPE v = neighbors[i];
+            if (!ASSERT_NODE_ID_ENCIRCLE(v))
+            {
+                continue;
+            }
+            if (!pau_vector_contains(pplug->allocatedNodes, v))
+            {
+                continue;
+            }
+            if (refer_Node_Extracted(v)->pseudocycledon)
+            {
+                continue;
+            }
+            if (dist[v] == -1)
+            {
+                dist[v] = dist[u] + 1;
+                queue[qt++] = v;
+            }
+        }
+    }
+
+    /* ── 2. 并查集初始化（仅对已分配的非伪环路节点） ── */
+    clear_parent();
+    PAU_VECTOR_FOREACH(node, pplug->allocatedNodes)
+    {
+        if (node > NODES_MAX_ENCIRCLE)
+        {
+            continue;
+        }
+        if (refer_Node_Extracted(node)->pseudocycledon)
+        {
+            continue;
+        }
+        set_parent(node, node);
+    }
+
+    /* ── 3. 记录每个节点的子节点数，用于均衡分支 ── */
+    int childCount[MAXNODES_MEM_LMT + 1];
+    memset(childCount, 0, sizeof(childCount));
+
+    /* ── 4. 收集候选边，并按 (距离和, 是否环形, 父节点子节点数) 排序 ── */
+    typedef struct
+    {
+        ID_TYPE u;     /* 较远节点 */
+        ID_TYPE v;     /* 较近节点（候选父） */
+        bool diagonal; /* 是否对角线边 */
+        int distSum;   /* dist[u] + dist[v]，越小越靠近根 */
+        int childLoad; /* childCount[v]，越小分支越均衡 */
+    } CandidateEdge;
+
+    CandidateEdge candidates[MAXNODES_MEM_LMT * 3];
+    int candidateCnt = 0;
+
+    PAU_VECTOR_FOREACH(node, pplug->allocatedNodes)
+    {
+        if (node > NODES_MAX_ENCIRCLE)
+        {
+            continue;
+        }
+        if (refer_Node_Extracted(node)->pseudocycledon)
+        {
+            continue;
+        }
+        if (dist[node] < 0)
+        {
+            continue; /* 不在 BFS 可达范围内 */
+        }
+
+        ID_TYPE neighbors[3] = {0};
+        get_neighbors(node, neighbors);
+        for (int i = 0; i < 3; i++)
+        {
+            ID_TYPE nbr = neighbors[i];
+            if (!ASSERT_NODE_ID_ENCIRCLE(nbr))
+            {
+                continue;
+            }
+            if (!pau_vector_contains(pplug->allocatedNodes, nbr))
+            {
+                continue;
+            }
+            if (refer_Node_Extracted(nbr)->pseudocycledon)
+            {
+                continue;
+            }
+            if (dist[nbr] < 0)
+            {
+                continue;
+            }
+            /* 避免重复添加同一条边（node < nbr 时添加） */
+            if (node >= nbr)
+            {
+                continue;
+            }
+
+            CandidateEdge e;
+            /* 让 u 为较远节点，v 为较近节点（候选父） */
+            if (dist[node] >= dist[nbr])
+            {
+                e.u = node;
+                e.v = nbr;
+            }
+            else
+            {
+                e.u = nbr;
+                e.v = node;
+            }
+            e.diagonal = (i == 2); /* get_neighbors 第3个是对径 */
+            e.distSum = dist[e.u] + dist[e.v];
+            e.childLoad = 0; /* 排序后再根据实时 childCount 决定，这里先填0 */
+            candidates[candidateCnt++] = e;
+        }
+    }
+
+    /* ── 5. 按 distSum 升序排序（越靠近根越优先），同距离环形优先 ── */
+    for (int i = 0; i < candidateCnt - 1; i++)
+    {
+        int minIdx = i;
+        for (int j = i + 1; j < candidateCnt; j++)
+        {
+            bool swap = false;
+            if (candidates[j].distSum < candidates[minIdx].distSum)
+            {
+                swap = true;
+            }
+            else if (candidates[j].distSum == candidates[minIdx].distSum)
+            {
+                /* 环形优先于对角线 */
+                if (!candidates[j].diagonal && candidates[minIdx].diagonal)
+                {
+                    swap = true;
+                }
+            }
+            if (swap)
+            {
+                minIdx = j;
+            }
+        }
+        if (minIdx != i)
+        {
+            CandidateEdge tmp = candidates[i];
+            candidates[i] = candidates[minIdx];
+            candidates[minIdx] = tmp;
+        }
+    }
+
+    /* ── 6. 逐边闭合，使用并查集避免环 ── */
+    for (int i = 0; i < candidateCnt; i++)
+    {
+        CandidateEdge e = candidates[i];
+
+        /* 已连通则跳过（避免成环） */
+        if (find(e.u) == find(e.v))
+        {
+            continue;
+        }
+
+        /* 闭合接触器 */
+        for (int j = 1; j <= 2 * NODES_MAX_ENCIRCLE; j++)
+        {
+            struct Alloc_contactorObj *c = refer_Contactor_Extracted(j);
+            if ((c->node1 == e.u && c->node2 == e.v) ||
+                (c->node1 == e.v && c->node2 == e.u))
+            {
+                c->isClosed = true;
+                break;
+            }
+        }
+
+        unite(e.u, e.v);
+        childCount[e.v]++; /* 记录父节点子节点数，供后续均衡使用 */
+    }
+
+    /* ── 7. 同步半矩阵接触器 ── */
     for (int i = NODES_MAX_ENCIRCLE + 1; i <= 2 * NODES_MAX_ENCIRCLE; i++)
     {
         struct Alloc_contactorObj *c = refer_Contactor_Extracted(i);
@@ -1018,15 +1272,10 @@ static bool node_common_operate(ID_TYPE plugid, bool opType)
     {
         return true;
     }
-    size_t quota_limit = get_allover_modules_cnt();
     size_t cnt = 0;
-    if (quota_limit < quota)
-    {
-        quota = quota_limit;
-    }
 
     dual_endings_bfs_shell(pplug->connectedNode, plugid, !opType);
-    while (cnt < quota_limit)
+    while (cnt < NODE_MAX)
     {
         int optimal_node = (opType == NODE_OP_DISPENSE)
                                ? find_euelect_node_near(plugid, pplug->connectedNode, quota)
@@ -1045,12 +1294,19 @@ static bool node_common_operate(ID_TYPE plugid, bool opType)
         {
             continue;
         }
-        func(optimal_node, plugid);
+        if (opType == NODE_OP_DISPENSE)
+        {
+            func(optimal_node, plugid);
+        }
         pau_printf("%s nodeid:%d plugid:%d\r\n", __FUNCTION__, optimal_node, plugid);
-        quota -= poptimal_node->moudle_box.size;
+        quota -= poptimal_node->power_available;
         if (quota <= 0)
         {
             break;
+        }
+        if (opType != NODE_OP_DISPENSE)
+        {
+            func(optimal_node, plugid);
         }
         cnt++;
     }
@@ -1535,7 +1791,7 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
 
     /* ── shortage meeting ── */
     pplug->state = PLUG_CHARGING;
-    int shortage = pplug->shortage;
+
     for (int guard = 0; pplug->shortage > 0; guard++)
     {
         bool res = node_common_operate(plugid, NODE_OP_DISPENSE);
@@ -1544,7 +1800,7 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
             res = node_extra_operate(plugid, NODE_OP_DISPENSE);
         }
         update_plug_shortage_power(plugid);
-        if (guard > shortage)
+        if (guard > NODE_MAX)
         {
             return res;
         }
@@ -1584,13 +1840,14 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
     }
     pplug->requiredPower = requiredPower;
     update_plug_shortage_power(plugid);
-    if (0 <= pplug->shortage)
+    if (0 < pplug->shortage)
     {
         return true;
     }
     pau_printf("[TACTIC] releasePower plugid:%d requiredpwr:%d shortage:%d\r\n", plugid, requiredPower, pplug->shortage);
     bool res = true;
     int loop_guard = 0;
+    int reserve = get_plug_allocated_cnt(plugid);
     while (0 > pplug->shortage)
     {
         res = have_plug_occupied_matrixnode(plugid);
@@ -1601,7 +1858,7 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
         {
             return false;
         }
-        if (loop_guard-- < pplug->shortage)
+        if (loop_guard++ > reserve)
         {
             break;
         }

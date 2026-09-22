@@ -2,6 +2,7 @@
 #define PAUTACTIC_H
 #include "pau_broker.h"
 
+#define POLICY_DISSABLEDNODES_BYPASS
 #define WEIGHT_HIERARCHY 10
 #define WEIGHT_1 1
 #define WEIGHT_2 WEIGHT_HIERARCHY *WEIGHT_1
@@ -23,7 +24,6 @@ enum Senario
     SENARIO_RELEASE,
     SENARIO_SUBSIDY,
     SENARIO_MATRICE
-
 };
 typedef struct
 {
@@ -64,7 +64,6 @@ void set_plug_sequent_flag(ID_TYPE plugid, bool val);
 
 PRIOR get_node_priority(ID_TYPE nodeid);
 int get_node_module_cnt(ID_TYPE nodeid);
-size_t get_allover_modules_cnt(void);
 
 int get_node_available_power(ID_TYPE nodeid);
 NodeState get_node_state(ID_TYPE nodeid);

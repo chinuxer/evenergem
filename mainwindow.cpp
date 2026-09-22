@@ -376,7 +376,7 @@ void MainWindow::onApplyConfigClicked()
     int pileCount = ui->pileCountSpinBox->value();
     int unitPower = ui->unitPowerSpinBox->value() * 10; // 界面显示的是 kW，底层存储为 0.1kW 单位
     (void)oprt_ratedpwr_per_module(unitPower);
-    ui->powerSpinBox->setValue(ui->unitPowerSpinBox->value() - SIZING_TOLERANCE * 0.2); // 回填功率请求框，减去容差值，保持一个模块的步进频率
+    ui->powerSpinBox->setValue(ui->unitPowerSpinBox->value()); // 回填功率请求框，减去容差值，保持一个模块的步进频率
 
     // ========== 2. 参数合法性校验 ==========
     if (nodeCount % 2 != 0)
@@ -567,14 +567,14 @@ void MainWindow::onPileSelectionChanged(int index)
                     "状态: %2\n"
                     "直连节点: %3\n"
                     "需求功率: %4kW\n"
-                    "需求节点数: %5\n"
+                    "缺额功率: %5\n"
                     "占用节点数: %6\n"
                     "优先级: %7") // 添加优先级显示
                 .arg(pile.id)
                 .arg(pile.pau_data->state == PLUG_CHARGING ? "充电中" : "空闲")
                 .arg(pile.pau_data->connectedNode)
                 .arg(pile.pau_data->requiredPower / 10.0, 0, 'f', 1)
-                .arg(pile.pau_data->shortage + pile.pau_data->allocatedNodes->size)
+                .arg(pile.pau_data->shortage)
                 .arg(pile.pau_data->allocatedNodes->size)
                 .arg(pile.pau_data->priority));
 
@@ -1167,7 +1167,7 @@ void MainWindow::updateGraphics()
                 size_t moduleCount = ::get_plug_charging_modules_cnt(pile.pau_data->id);
                 QString labelText = QString("%1:%2 %3\n%4级")
                                         .arg(moduleCount)
-                                        .arg(pile.pau_data->shortage)
+                                        .arg(pile.pau_data->shortage / 10.0, 0, 'f', 1)
                                         .arg(pile.pau_data->requiredPower / 10.0, 0, 'f', 1) // Float format, 1 decimal place
                                         .arg(pile.pau_data->priority);
                 m_pileLabelItems[i]->setPlainText(labelText);
@@ -1340,7 +1340,7 @@ void MainWindow::updateStatusDisplay()
         statusText += QString("桩%1: %2/%3 [%4]\n")
                           .arg(pile.id)
                           .arg(allocated.size())
-                          .arg(pile.pau_data->shortage + pile.pau_data->allocatedNodes->size)
+                          .arg(pile.pau_data->shortage)
                           .arg(nodeList.isEmpty() ? "无节点" : nodeList);
     }
 

@@ -39,20 +39,16 @@ int oprt_ratedpwr_per_module(int rated_pwr)
 }
 static void availablePwr_Init(struct Alloc_nodeObj *pnode, int rated_pwr)
 {
-    pnode->power_available = rated_pwr * (pnode->moudle_box.size);
-}
-static void modulesPerNode_Init(struct Alloc_nodeObj *pnode)
-{
 #if defined(STM32F407xx)
 #include "module_config.h"
     if (pnode->id < 1 || pnode->id > (sizeof(module_nbr_map) / sizeof(module_nbr_map[0])))
     {
-        pnode->moudle_box.size = 0;
+        pnode->power_available = 0;
         return;
     }
-    pnode->moudle_box.size = module_nbr_map[pnode->id - 1];
+    pnode->power_available = rated_pwr * module_nbr_map[pnode->id - 1];
 #else
-    pnode->moudle_box.size = 1;
+    pnode->power_available = rated_pwr;
 #endif
 }
 bool oprt_node_module_count_set(ID_TYPE nodeid, size_t module_count)
@@ -63,8 +59,9 @@ bool oprt_node_module_count_set(ID_TYPE nodeid, size_t module_count)
     }
 
     struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-    pnode->moudle_box.size = module_count;
-    availablePwr_Init(pnode, oprt_ratedpwr_per_module(0));
+    int ratepwr = oprt_ratedpwr_per_module(0);
+    pnode->power_available = ratepwr * module_count;
+
     return true;
 }
 ID_TYPE calc_plug_connectednode(ID_TYPE plugid, ID_TYPE nodes_total, ID_TYPE plugs_total)
@@ -111,7 +108,6 @@ static void Alloc_NodesArray_Init(void *const ptr, size_t n)
         p->obj_array[i].state = NODE_IDLEFREE;
         p->obj_array[i].priority = PRIOR_VAIN;
         p->obj_array[i].plug_id = ID_VAIN;
-        modulesPerNode_Init(&p->obj_array[i]);
         availablePwr_Init(&p->obj_array[i], p->unitpower);
     }
     *GET_REAR_CANARY_PTR(p, Alloc_NodesArray) = REAR_MAGICWORD;
@@ -423,16 +419,6 @@ int get_plug_charging_modules_cnt(ID_TYPE plugid)
     }
     return ret;
 }
-
-size_t get_allover_modules_cnt(void)
-{
-    size_t ret = 0;
-    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
-    {
-        ret += refer_Node_Extracted(nodeid)->moudle_box.size;
-    }
-    return ret;
-}
 size_t get_plug_allocated_cnt(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
@@ -506,15 +492,14 @@ int get_plug_charging_power(ID_TYPE plugid)
 }
 void update_plug_shortage_power(ID_TYPE plugid)
 {
-#define GETQUOTA(x) (0 == (x) ? 0 : ((int)((x) + UNITPWR_MAX + SIZING_TOLERANCE) / UNITPWR_MAX))
     if (!ASSERT_PLUG_ID(plugid))
     {
         return;
     }
-    int chargingmodulesnum = get_plug_charging_modules_cnt(plugid);
+    int output_thisplugid = get_plug_charging_power(plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
 
-    pplug->shortage = GETQUOTA(pplug->requiredPower) - chargingmodulesnum;
+    pplug->shortage = pplug->requiredPower - output_thisplugid;
 }
 ID_TYPE get_node_chargingplugid(ID_TYPE node)
 {
@@ -622,8 +607,8 @@ int requestpwr_limited_matching(ID_TYPE plugid, int required_power)
     size_t exclude_modules_cnt = get_system_charging_modules_cnt(plugid);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     int limited_power = get_system_limited_power();
-    size_t limited_modules_cnt = GETQUOTA(limited_power);
-    size_t required_modules_cnt = GETQUOTA(required_power);
+    size_t limited_modules_cnt = 0;  // GETQUOTA(limited_power);
+    size_t required_modules_cnt = 0; // GETQUOTA(required_power);
     if (required_modules_cnt + exclude_modules_cnt > limited_modules_cnt)
     {
         pau_log_printf("[%s] plugid:%d %d + %d  >limited:%d", __FUNCTION__, plugid, required_modules_cnt, exclude_modules_cnt, limited_modules_cnt);

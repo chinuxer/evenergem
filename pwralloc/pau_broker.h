@@ -94,15 +94,7 @@ void pau_log_printf(const char *fmt, ...);
 #define FRONT_MAGICWORD 0xDEADCAFEu
 #define REAR_MAGICWORD 0xBABEFACEu
 #define ID_VAIN 0
-    typedef union
-    {
-        ID_TYPE modules[MAX_MODULES_PER_NODE + 1]; // size + 节点包含的模块编号
-        struct
-        {
-            size_t size;
-            ID_TYPE _pad[MAX_MODULES_PER_NODE];
-        };
-    } ModuleBox;
+
     struct Alloc_nodeObj
     {
         ID_TYPE id;
@@ -110,7 +102,6 @@ void pau_log_printf(const char *fmt, ...);
         PRIOR priority;
         bool pseudocycledon;
         int power_available;
-        ModuleBox moudle_box;
         NodeState state;
     };
 
@@ -222,6 +213,11 @@ VARIABLE_LIST_PENDING_EXPANDED
         static uint8_t custom_mem_pool[CUSTOM_HEAP_SIZE] IN_PAU_HEAP_SECTION = {sizeof(size_t)};
         static size_t *custom_mem_offset = (size_t *)custom_mem_pool;
         size = ALIGN_SIZE(size);
+        if (INIT_SPAN == span)
+        {
+            memset(custom_mem_pool, 0, CUSTOM_HEAP_SIZE);
+            *custom_mem_offset = sizeof(size_t);
+        }
         if (*custom_mem_offset + size > CUSTOM_HEAP_SIZE)
         {
             return NULL;
@@ -251,10 +247,7 @@ VARIABLE_LIST_PENDING_EXPANDED
             // pau_printf("%s: %p \r\n", "HEAP_SPAN", new_ptr);
             return new_ptr;
         }
-        else if (INIT_SPAN == span)
-        {
-            *custom_mem_offset = sizeof(size_t);
-        }
+
         else if (RATE_SPAN == span)
         {
             pau_printf("PAU_HEAP_USAGE: %.2f%% %p/%p\r\n", (float)(*custom_mem_offset) / CUSTOM_HEAP_SIZE * 100, *custom_mem_offset, CUSTOM_HEAP_SIZE);
