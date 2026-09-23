@@ -323,7 +323,7 @@ struct Alloc_plugObj *refer_Plug_Extracted(ID_TYPE plug);
 struct Alloc_contactorObj *refer_Contactor_Extracted(ID_TYPE contactor);
 struct Tactic_ReqCurrentObj *refer_ReqSettler_Extracted(ID_TYPE plug);
 #endif // __IMPORT_PAU_DBFUNC__
-    void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs);
+    void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes);
 #ifdef __cplusplus
 }
 #endif // __cplusplus

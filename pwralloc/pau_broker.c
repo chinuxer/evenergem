@@ -278,8 +278,9 @@ bool database_building(TOPOTYPE topology, size_t nodes_num, size_t plugs_num)
     size_t Plugs_varonstack = plugs_num;
     size_t Contactors_varonstack = 2 * nodes_num;
     size_t ReqSettler_varonstack = Plugs_varonstack;
+    size_t MatrixNodes_varonstack = (SemiHybrid == topology) ? nodes_num / 2 : 0;
     (void)pau_calloc(0, __func__);
-    directedConfig_Init(Nodes_varonstack, Plugs_varonstack);
+    directedConfig_Init(Nodes_varonstack, Plugs_varonstack, MatrixNodes_varonstack);
     if (SemiHybrid == topology)
     {
         Nodes_varonstack += nodes_num / 2;

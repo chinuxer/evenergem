@@ -53,8 +53,7 @@ ID_TYPE get_plug_connectednode(ID_TYPE plugid);
 void update_plug_shortage_power(ID_TYPE plugid);
 int get_plug_shortage(ID_TYPE plugid);
 void print_outcomes(ID_TYPE plugid);
-FlowMap *encircle_flowDirectioned(ID_TYPE, FlowMap *);
-int excircle_flowDirectioned(ID_TYPE, FlowMap *, FlowMap *);
+FlowMap *flow_directioned(ID_TYPE, FlowMap *);
 int get_plug_charging_power(ID_TYPE plugid);
 
 bool get_plug_refresh_flag(ID_TYPE plugid);

@@ -253,7 +253,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
     }
     case SENARIO_ACQUIRE:
     {
-        ID_TYPE neighbors[3];
+        ID_TYPE neighbors[MAX_NODE_NEIGHBORS];
         void get_neighbors(ID_TYPE nodeid, ID_TYPE * neighbors);
         get_neighbors(nodeid, neighbors);
 
@@ -265,12 +265,12 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         module_adaptive /= 100; // 10kW颗粒度
         module_adaptive = module_adaptive >= (WEIGHT_HIERARCHY - 1) ? (WEIGHT_HIERARCHY - 1) : module_adaptive;
         module_adaptive = WEIGHT_HIERARCHY - 1 - module_adaptive;
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             neighbor_nodeid = neighbors[i];
             if (neighbor_nodeid == ID_VAIN)
             {
-                return score;
+                break;
             }
             if (get_node_chargingplugid(neighbor_nodeid) == plugid && !is_node_pseudocycledon(neighbor_nodeid)) // 如果是邻接点(但限于ana_katabatic_flow接触器限流pseudocyclis点不能继续发展新节点)则比较该点到直连点的距离
             {
@@ -288,7 +288,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
             }
         }
         score = WEIGHT_1 * (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1 - hops);
-        score += WEIGHT_3 * (3 - occupied_count_neighbors);
+        score += WEIGHT_3 * (occupied_count_neighbors < 3 ? (3 - occupied_count_neighbors) : 0);
         score += WEIGHT_4 * (module_adaptive);
         score += WEIGHT_5 * (hops != -1 ? 1 : 0);
         score += WEIGHT_5 * (nodeid == get_plug_connectednode(plugid) && 0 == get_dist(nodeid) ? 1 : 0);
@@ -301,7 +301,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
     }
     case SENARIO_PREEMPT:
     {
-        ID_TYPE neighbors[3];
+        ID_TYPE neighbors[MAX_NODE_NEIGHBORS];
         void get_neighbors(ID_TYPE nodeid, ID_TYPE * neighbors);
         get_neighbors(nodeid, neighbors);
         ID_TYPE occupied_plugid_neighbors = ID_VAIN;
@@ -311,12 +311,12 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         module_adaptive = module_adaptive <= quota ? (WEIGHT_HIERARCHY - 1) - quota + module_adaptive : (WEIGHT_HIERARCHY - 1) - module_adaptive;
         module_adaptive = module_adaptive <= 0 ? 0 : module_adaptive;
         module_adaptive = module_adaptive >= (WEIGHT_HIERARCHY - 1) ? (WEIGHT_HIERARCHY - 1) : module_adaptive;
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             neighbor_nodeid = neighbors[i];
             if (neighbor_nodeid == ID_VAIN)
             {
-                return score;
+                break;
             }
             if (get_node_chargingplugid(neighbor_nodeid) == plugid) // 如果是邻接点，则比较该点到直连点的距离
             {

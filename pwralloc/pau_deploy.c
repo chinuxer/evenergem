@@ -12,6 +12,8 @@ static int compress_outcomes(St_PolicyTargetResult *outcome, int size)
             outcome->PolicyTargetdPowerNode[write_idx] = outcome->PolicyTargetdPowerNode[read_idx];
             outcome->PolicyTarget_RelayNo[write_idx][0] = outcome->PolicyTarget_RelayNo[read_idx][0];
             outcome->PolicyTarget_RelayNo[write_idx][1] = outcome->PolicyTarget_RelayNo[read_idx][1];
+            outcome->u8Hops[write_idx] = outcome->u8Hops[read_idx];
+            outcome->u8ParentNodeNo[write_idx] = outcome->u8ParentNodeNo[read_idx];
             write_idx++;
         }
     }
@@ -19,15 +21,14 @@ static int compress_outcomes(St_PolicyTargetResult *outcome, int size)
     return write_idx;
 }
 
-static int map_outlier_truncated(ID_TYPE plugid, FlowMap *map, St_PolicyTargetResult *outcome)
+static int map_outlier_truncated(FlowMap *map, St_PolicyTargetResult *outcome)
 {
-    // 比较outcome和map的内容,如果节点和接触器的匹配发生了变化,则该节点和该条支路上hops大于该节点hops的节点匹配关系都需被截断,仅保留不变化的节点-接触器匹配关系
-    //  在map[m]中找到direction与outcome->PolicyTargetdPowerNode[n]相同的节点,如果map[m]的contactorid与outcome->PolicyTarget_RelayNo[n][0]不同
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    if (NULL == pplug)
-    {
-        return 0;
-    }
+    /*
+     * 比较上一次的 outcome 与本次生成的 map：
+     * 若某节点的潮流接触器（RelayNo[0]）发生了改变，则该节点及其下游（hops 更大的）节点
+     * 的匹配关系都要被截断，仅保留到该节点为止仍保持原样的节点-接触器匹配关系。
+     * outcome 与 map 均已按 hops 从小到大排列，因此按顺序遍历即可。
+     */
     PAU_Vector *vec_unvaried = pau_vector_create(MAXNODES_MEM_LMT);
     if (NULL == vec_unvaried)
     {
@@ -39,11 +40,6 @@ static int map_outlier_truncated(ID_TYPE plugid, FlowMap *map, St_PolicyTargetRe
         if (0 == outcome->PolicyTargetdPowerNode[n])
         {
             continue;
-        }
-        if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX && outcome->PolicyTargetdPowerNode[n] > NODES_MAX_ENCIRCLE)
-        {
-            memset(outcome->PolicyTargetdPowerNode + n, 0, MAXNODES_MEM_LMT - n);
-            break;
         }
         if (METABOLIN_INTACT == metabole_alethes(outcome->PolicyTargetdPowerNode[n], outcome->PolicyTarget_RelayNo[n][0], map))
         {
@@ -58,17 +54,8 @@ static int map_outlier_truncated(ID_TYPE plugid, FlowMap *map, St_PolicyTargetRe
         outcome->PolicyTarget_RelayNo[n][1] = 0;
         for (int m = n + 1; m < outcome->u8PolicyTargetPowerNodeNum; m++)
         {
-            ID_TYPE c = outcome->PolicyTarget_RelayNo[m][0];
-            if (!ASSERT_CONTACTOR_ID(c))
-            {
-                continue;
-            }
-            struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
-            if (NULL == pcontactor)
-            {
-                continue;
-            }
-            ID_TYPE checknodeid = (pcontactor->node2 == outcome->PolicyTargetdPowerNode[m]) ? pcontactor->node1 : pcontactor->node2;
+            /* 下游节点：其父节点（u8ParentNodeNo）若已不在保持集合中，则一并截断 */
+            ID_TYPE checknodeid = outcome->u8ParentNodeNo[m];
             if (!pau_vector_contains(vec_unvaried, checknodeid))
             {
                 outcome->PolicyTargetdPowerNode[m] = 0;
@@ -85,11 +72,9 @@ static int map_outlier_truncated(ID_TYPE plugid, FlowMap *map, St_PolicyTargetRe
     pau_vector_destroy(vec_unvaried);
     return compress_outcomes(outcome, MAXNODES_MEM_LMT);
 }
-static void fillout_Outcomes(ID_TYPE chargeeID, FlowMap *map, St_PolicyTargetResult *outcome, int size)
+static void fillout_Outcomes(FlowMap *map, St_PolicyTargetResult *outcome, int size)
 {
-
-    int n;
-    for (n = 0; n < size; n++)
+    for (int n = 0; n < size; n++)
     {
         if (ID_VAIN == map[n].direction || ID_VAIN == map[n].contactorid)
         {
@@ -104,30 +89,7 @@ static void fillout_Outcomes(ID_TYPE chargeeID, FlowMap *map, St_PolicyTargetRes
         {
             outcome->PolicyTarget_RelayNo[n][1] = 255;
         }
-        if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX && map[n].contactorid > 2 * NODES_MAX_ENCIRCLE && map[n].appendix > ID_VAIN)
-        {
-            ID_TYPE appendix_contactor = map[n].appendix;
-            appendix_contactor = (ID_TYPE)(appendix_contactor + NODES_MAX_ENCIRCLE);
-            outcome->PolicyTarget_RelayNo[n][1] = (unsigned char)appendix_contactor;
-        }
     }
-}
-static int get_encirclenodes_num_outcomes(St_PolicyTargetResult *outcome)
-{
-    int cnt = 0;
-    for (int i = 0; i < MAXNODES_MEM_LMT; i++)
-    {
-        ID_TYPE nodeid = outcome->PolicyTargetdPowerNode[i];
-        if (refer_Node_Extracted(nodeid)->pseudocycledon)
-        {
-            continue;
-        }
-        if (ID_VAIN < nodeid && nodeid <= NODES_MAX_ENCIRCLE)
-        {
-            cnt++;
-        }
-    }
-    return cnt;
 }
 
 bool publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
@@ -147,26 +109,21 @@ bool publish_Outcomes(ID_TYPE chargeeID, St_PolicyTargetResult *outcome)
         pau_printf("[PAU] plug%d:Outcomes %d\r\n", chargeeID, outcome->u8PolicyTargetPowerNodeNum);
         return false;
     }
+
     FlowMap map[MAXNODES_MEM_LMT] = {{ID_VAIN, ID_VAIN, ID_VAIN, ID_VAIN, ID_VAIN}};
-    FlowMap *nexttag = encircle_flowDirectioned(chargeeID, map);
-    int encirclenodes_num = get_encirclenodes_num_outcomes(outcome);
-    int offset = map_outlier_truncated(chargeeID, map, outcome);
+    FlowMap *end = flow_directioned(chargeeID, map);
+    int map_size = (NULL != end) ? (int)(end - map) : 0;
+    int old_num = outcome->u8PolicyTargetPowerNodeNum;
+    int offset = map_outlier_truncated(map, outcome);
     bool is_outlier = false;
-    if (offset == encirclenodes_num)
+    if (offset == old_num)
     {
-        outcome->u8PolicyTargetPowerNodeNum = get_plug_allocated_cnt(chargeeID);
-        (void)excircle_flowDirectioned(chargeeID, nexttag, map + MAXNODES_MEM_LMT - 1);
-        // 打印当前map
-        // for (int i = 0; i < 10; i++)
-        // {
-        //     pau_printf("map[%d]: %d %d %d %d\r\n", i, map[i].direction, map[i].hops, map[i].contactorid, map[i].appendix);
-        // }
-        fillout_Outcomes(chargeeID, map, outcome, outcome->u8PolicyTargetPowerNodeNum);
+        outcome->u8PolicyTargetPowerNodeNum = (unsigned char)map_size;
+        fillout_Outcomes(map, outcome, map_size);
     }
     else
     {
-        pau_printf("%d != %d \r\n", offset, encirclenodes_num);
-        outcome->u8PolicyTargetPowerNodeNum = offset;
+        outcome->u8PolicyTargetPowerNodeNum = (unsigned char)offset;
         set_plug_sequent_flag(chargeeID, true);
         pau_printf("[PAU] plug%d shift power route...shrink to minimal collection with %d node(s)\r\n", chargeeID, offset);
         is_outlier = true;

@@ -23,35 +23,50 @@ struct
 {
     size_t front_canary;
     int head[MAXNODES_MEM_LMT + 1];
-    int nxt[6 * MAXNODES_MEM_LMT + 1];
-    int to[6 * MAXNODES_MEM_LMT + 1];
+    int nxt[MAX_GRAPH_DIRECTED_EDGES];
+    int to[MAX_GRAPH_DIRECTED_EDGES];
     int dist[MAXNODES_MEM_LMT + 1];    /* 对当前起点，dist[i] 为到 i 的最短距离 */
     int q[MAXNODES_MEM_LMT];           /* 手写队列，比 STL 快 */
     char locked[MAXNODES_MEM_LMT + 1]; /* >0 表示被锁，节点编号 1..n */
 
     int qh;
     int qt;
-    int nodeCount;
+    int nodeCount;   /* 线环节点数 R */
+    int matrixCount; /* 半矩阵扩展节点数 H=R/2, 非半矩阵为 0 */
+    int totalCount;  /* 节点总数 R+H */
     int plugCount;
-    int tot; /* 邻接表，最多 3n 条边 */
-    Contactor_Edge candidates[MAXNODES_MEM_LMT * 3];
+    int tot; /* 邻接表已用边数（前向星，有向边） */
+    Contactor_Edge candidates[MAX_GRAPH_UNDIRECTED_EDGES];
     int parent[MAXNODES_MEM_LMT + 1];
     size_t rear_canary;
 } *pconfig_graph IN_PAU_RAM_SECTION = NULL;
 
 static inline void add_edge(int u, int v)
 {
+    if (pconfig_graph->tot >= MAX_GRAPH_DIRECTED_EDGES)
+    {
+        pau_printf("ERROR: graph edge table overflow (%d >= %d)\r\n",
+                   pconfig_graph->tot, MAX_GRAPH_DIRECTED_EDGES);
+        return;
+    }
     pconfig_graph->tot += 1;
     pconfig_graph->nxt[pconfig_graph->tot] = pconfig_graph->head[u];
     pconfig_graph->head[u] = pconfig_graph->tot;
     pconfig_graph->to[pconfig_graph->tot] = v;
 }
 
-/* 建图：每个节点连 左、右、对径 */
+/* 建图：先对线环建图（左、右、对径），再对半矩阵节点扩容建图
+ *
+ * 半矩阵扩展规则（R 线环节点 + H=R/2 矩阵节点）：
+ *   矩阵节点 R+k 与线环节点 k 和 k+H 相连（对径开关 + 4XX 接触器）
+ *   所有矩阵节点两两相连（3XX 接触器构成的全连接矩阵母线）
+ */
 void build_graph(void)
 {
     pconfig_graph->tot = 0;
     int n = pconfig_graph->nodeCount;
+    int h = pconfig_graph->matrixCount;
+    int t = pconfig_graph->totalCount;
     memset(pconfig_graph->head, 0, sizeof(pconfig_graph->head));
     for (int u = 1; u <= n; ++u)
     {
@@ -65,20 +80,68 @@ void build_graph(void)
         add_edge(u, v3);
         add_edge(v3, u);
     }
+    /* 扩容建图：半矩阵节点 */
+    for (int k = 1; k <= h; ++k)
+    {
+        int m = n + k;         /* 矩阵节点编号 R+k */
+        int alpha = k;         /* 对径开关下端点 k */
+        int beta = k + h;      /* 对径开关下端点 k+H */
+        add_edge(m, alpha);
+        add_edge(alpha, m);
+        add_edge(m, beta);
+        add_edge(beta, m);
+    }
+    for (int a = n + 1; a <= t; ++a)
+    {
+        for (int b = a + 1; b <= t; ++b)
+        {
+            add_edge(a, b);
+            add_edge(b, a);
+        }
+    }
 }
 
 static bool is_edge_available(int u, int v)
 {
-    // 遍历线环内的所有接触器（环形 + 对角线）
-    for (int c = 1; c <= 2 * NODES_MAX_ENCIRCLE; ++c)
+    // 遍历所有接触器（线环、对径、半矩阵母线、半矩阵-线环）
+    for (int c = 1; c <= CONTACTOR_MAX; ++c)
     {
         struct Alloc_contactorObj *pcont = refer_Contactor_Extracted(c);
-        if (pcont && pcont->isClosed)
+        if (!pcont || !pcont->isClosed)
+        {
+            continue;
+        }
+        if (pcont->node2 <= NODE_MAX)
         {
             if ((pcont->node1 == u && pcont->node2 == v) ||
                 (pcont->node1 == v && pcont->node2 == u))
             {
                 return true; // 存在闭合接触器
+            }
+        }
+        else if (pcont->node2 > CONTACTOR_SPLICE_MULTIPLE)
+        {
+            // 4XX 接触器：node1 为矩阵节点，node2 编码两个对径线环节点
+            ID_TYPE nodeid_alpha = pcont->node2 / CONTACTOR_SPLICE_MULTIPLE;
+            ID_TYPE nodeid_beta = pcont->node2 % CONTACTOR_SPLICE_MULTIPLE;
+            ID_TYPE ring = ID_VAIN;
+            if (pcont->node1 == u && (nodeid_alpha == v || nodeid_beta == v))
+            {
+                ring = v;
+            }
+            else if (pcont->node1 == v && (nodeid_alpha == u || nodeid_beta == u))
+            {
+                ring = u;
+            }
+            if (ID_VAIN == ring)
+            {
+                continue;
+            }
+            // 还需对应的对径分段接触器闭合，矩阵节点才真正连到该线环节点
+            struct Alloc_contactorObj *pseg = refer_Contactor_Extracted(NODES_MAX_ENCIRCLE + ring);
+            if (pseg && pseg->isClosed)
+            {
+                return true;
             }
         }
     }
@@ -128,7 +191,7 @@ int get_hops_occupied(ID_TYPE start, ID_TYPE nodeid, ID_TYPE plugid)
 }
 int get_dist(ID_TYPE nodeid)
 {
-    if (nodeid > pconfig_graph->nodeCount || nodeid < 1)
+    if (nodeid > pconfig_graph->totalCount || nodeid < 1)
     {
         return -1;
     }
@@ -136,7 +199,7 @@ int get_dist(ID_TYPE nodeid)
 }
 void set_dist(ID_TYPE nodeid, int value)
 {
-    if (nodeid > pconfig_graph->nodeCount || nodeid < 1)
+    if (nodeid > pconfig_graph->totalCount || nodeid < 1)
     {
         return;
     }
@@ -144,7 +207,7 @@ void set_dist(ID_TYPE nodeid, int value)
 }
 void set_locked(ID_TYPE plugid, ID_TYPE nodeid)
 {
-    if (nodeid > pconfig_graph->nodeCount || nodeid < 1)
+    if (nodeid > pconfig_graph->totalCount || nodeid < 1)
     {
         return;
     }
@@ -156,14 +219,14 @@ void set_locked(ID_TYPE plugid, ID_TYPE nodeid)
 }
 int get_locked(ID_TYPE nodeid)
 {
-    if (nodeid > pconfig_graph->nodeCount || nodeid < 1)
+    if (nodeid > pconfig_graph->totalCount || nodeid < 1)
     {
         return -1;
     }
     return pconfig_graph->locked[nodeid];
 }
 
-void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs)
+void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes)
 {
     if ((nodes & 1) > 0)
     {
@@ -174,8 +237,7 @@ void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs)
         return;
     }
     // 防御性检查：节点数不能超过 MAXNODES_MEM_LMT
-    // 原因：每个节点产生 6 条边，nxt[] 和 to[] 数组大小为 6*MAXNODES_MEM_LMT+1
-    if (nodes > MAXNODES_MEM_LMT)
+    if (nodes > MAXNODES_MEM_LMT || nodes + matrix_nodes > MAXNODES_MEM_LMT)
     {
         pau_printf("ERROR: Requested nodes (%u) exceeds MAXNODES_MEM_LMT (%u)\n",
                    nodes, MAXNODES_MEM_LMT);
@@ -190,6 +252,8 @@ void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs)
     }
     pau_printf("PAU_DIRECTED_CONFIG_INIT: %x\n", sizeof(*pconfig_graph));
     pconfig_graph->nodeCount = nodes;
+    pconfig_graph->matrixCount = matrix_nodes;
+    pconfig_graph->totalCount = nodes + matrix_nodes;
     pconfig_graph->plugCount = plugs;
     pconfig_graph->front_canary = FRONT_MAGICWORD;
     pconfig_graph->rear_canary = REAR_MAGICWORD;
@@ -203,7 +267,7 @@ void dual_endings_bfs_shell(ID_TYPE start, ID_TYPE plugid, bool find_type)
 {
     if (pconfig_graph->locked[start] != 0 && pconfig_graph->locked[start] != plugid)
     {
-        for (int i = 1; i <= pconfig_graph->nodeCount; i++)
+        for (int i = 1; i <= pconfig_graph->totalCount; i++)
         {
             pconfig_graph->dist[i] = -1;
         }
@@ -250,7 +314,7 @@ void unite(int x, int y)
 
 void add_candidate_edge(size_t *candidateCnt, ID_TYPE u, ID_TYPE v, bool isDiagonal)
 {
-    if (*candidateCnt >= (MAXNODES_MEM_LMT * 3)) // 检查是否超过候选边数组的容量
+    if (*candidateCnt >= MAX_GRAPH_UNDIRECTED_EDGES) // 检查是否超过候选边数组的容量
     {
         // Optional: Handle error or log warning if buffer is full
         return;
@@ -269,11 +333,11 @@ void clear_parent(void)
 
 void set_parent(ID_TYPE node, ID_TYPE parentNode)
 {
-    if (node > pconfig_graph->nodeCount || node < 1)
+    if (node > pconfig_graph->totalCount || node < 1)
     {
         return;
     }
-    if (parentNode > pconfig_graph->nodeCount || parentNode < 1)
+    if (parentNode > pconfig_graph->totalCount || parentNode < 1)
     {
         return;
     }

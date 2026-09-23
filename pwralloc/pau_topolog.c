@@ -56,16 +56,66 @@ ID_TYPE get_neighbor_lower_beta(ID_TYPE nodeid)
     return nodeid - NODES_MAX_ENCIRCLE / 2;
 }
 
+/*
+ * @brief 获取统一图（线环 + 半矩阵）上某个节点的全部邻接点
+ *
+ * 线环节点：左、右、对径、以及其对应的矩阵节点（get_neighbor_upper）
+ * 矩阵节点：两个下端点线环节点（对径开关的两端）以及其余全部矩阵节点
+ *
+ * 邻接点写入 neighbors[0..MAX_NODE_NEIGHBORS-1]，不足的位置填 0(ID_VAIN)，
+ * 调用方遍历到 ID_VAIN 为止。
+ */
 void get_neighbors(ID_TYPE nodeid, ID_TYPE *neighbors)
 {
-    if (!ASSERT_NODE_ID_ENCIRCLE(nodeid))
+    for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
+    {
+        neighbors[i] = ID_VAIN;
+    }
+    if (!ASSERT_NODE_ID(nodeid))
     {
         return;
     }
-    // 获取逆顺对各邻接点
-    neighbors[0] = get_neighbor_right(nodeid);
-    neighbors[1] = get_neighbor_left(nodeid);
-    neighbors[2] = get_neighbor_diagonal(nodeid);
+    if (nodeid <= NODES_MAX_ENCIRCLE)
+    {
+        // 线环节点：逆顺对各邻接点 + 对径
+        neighbors[0] = get_neighbor_right(nodeid);
+        neighbors[1] = get_neighbor_left(nodeid);
+        neighbors[2] = get_neighbor_diagonal(nodeid);
+        // 该线环节点对应的半矩阵节点（对径开关 + 4XX 接触器）
+        if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
+        {
+            ID_TYPE upper = get_neighbor_upper(nodeid);
+            if (ASSERT_NODE_ID(upper))
+            {
+                neighbors[3] = upper;
+            }
+        }
+        return;
+    }
+    // 半矩阵节点：两个下端点线环节点 + 其余矩阵节点（矩阵母线全连接）
+    int idx = 0;
+    ID_TYPE lower_alpha = get_neighbor_lower_alpha(nodeid);
+    ID_TYPE lower_beta = get_neighbor_lower_beta(nodeid);
+    if (ASSERT_NODE_ID(lower_alpha))
+    {
+        neighbors[idx++] = lower_alpha;
+    }
+    if (ASSERT_NODE_ID(lower_beta))
+    {
+        neighbors[idx++] = lower_beta;
+    }
+    for (ID_TYPE matrix_node = NODES_MAX_ENCIRCLE + 1; matrix_node <= NODE_MAX; matrix_node++)
+    {
+        if (matrix_node == nodeid)
+        {
+            continue;
+        }
+        if (idx >= MAX_NODE_NEIGHBORS)
+        {
+            break;
+        }
+        neighbors[idx++] = matrix_node;
+    }
 }
 bool is_furthernode_pathself(ID_TYPE plugid, ID_TYPE nodeid_alpha, ID_TYPE nodeid_beta)
 {
@@ -90,11 +140,11 @@ void expseudous_eisalethes(struct Alloc_plugObj *pplug)
         {
             continue;
         }
-        ID_TYPE neighbors[3] = {0};
+        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
         get_neighbors(nodeid, neighbors);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
-            if (!ASSERT_NODE_ID_ENCIRCLE(neighbors[i]))
+            if (!ASSERT_NODE_ID(neighbors[i]))
             {
                 continue;
             }
@@ -284,6 +334,126 @@ acyclic_tree_building_(struct Alloc_plugObj *pplug)
  *
  * @param pplug 充电桩对象
  */
+/* 判断接触器是否把两个都属于该桩的端点连接起来（含 4XX 编码接触器） */
+static bool contactor_belongs_plug(struct Alloc_contactorObj *c, struct Alloc_plugObj *pplug)
+{
+    if (NULL == c || NULL == pplug)
+    {
+        return false;
+    }
+    if (!pau_vector_contains(pplug->allocatedNodes, c->node1))
+    {
+        return false;
+    }
+    if (c->node2 > CONTACTOR_SPLICE_MULTIPLE)
+    {
+        ID_TYPE nodeid_alpha = c->node2 / CONTACTOR_SPLICE_MULTIPLE;
+        ID_TYPE nodeid_beta = c->node2 % CONTACTOR_SPLICE_MULTIPLE;
+        return pau_vector_contains(pplug->allocatedNodes, nodeid_alpha) ||
+               pau_vector_contains(pplug->allocatedNodes, nodeid_beta);
+    }
+    return pau_vector_contains(pplug->allocatedNodes, c->node2);
+}
+
+/*
+ * 查找连接 node_alpha 与 node_beta 的接触器。
+ * 对“矩阵节点-线环节点”边，返回 4XX 接触器，并通过 appendix 输出
+ * 对应的对径分段接触器编号（线环节点一侧到公共交点的接触器）。
+ */
+static struct Alloc_contactorObj *find_contactor_bynode(ID_TYPE node_alpha, ID_TYPE node_beta, ID_TYPE *appendix)
+{
+    if (appendix)
+    {
+        *appendix = ID_VAIN;
+    }
+    if (!ASSERT_NODE_ID(node_alpha) || !ASSERT_NODE_ID(node_beta))
+    {
+        return NULL;
+    }
+    bool alpha_matrix = (node_alpha > NODES_MAX_ENCIRCLE);
+    bool beta_matrix = (node_beta > NODES_MAX_ENCIRCLE);
+    if (alpha_matrix != beta_matrix)
+    {
+        ID_TYPE matrix_node = alpha_matrix ? node_alpha : node_beta;
+        ID_TYPE ring_node = alpha_matrix ? node_beta : node_alpha;
+        for (ID_TYPE c = 1; c <= CONTACTOR_MAX; c++)
+        {
+            struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
+            if (pcontactor->node1 != matrix_node || pcontactor->node2 <= CONTACTOR_SPLICE_MULTIPLE)
+            {
+                continue;
+            }
+            ID_TYPE nodeid_alpha = pcontactor->node2 / CONTACTOR_SPLICE_MULTIPLE;
+            ID_TYPE nodeid_beta = pcontactor->node2 % CONTACTOR_SPLICE_MULTIPLE;
+            if (nodeid_alpha == ring_node || nodeid_beta == ring_node)
+            {
+                if (appendix)
+                {
+                    struct Alloc_contactorObj *psegment = refer_Contactor_Extracted(NODES_MAX_ENCIRCLE + ring_node);
+                    *appendix = (NULL != psegment) ? psegment->id : ID_VAIN;
+                }
+                return pcontactor;
+            }
+        }
+        return NULL;
+    }
+    for (ID_TYPE c = 1; c <= CONTACTOR_MAX; c++)
+    {
+        struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
+        if (pcontactor->node2 > CONTACTOR_SPLICE_MULTIPLE)
+        {
+            continue;
+        }
+        if ((pcontactor->node1 == node_alpha && pcontactor->node2 == node_beta) ||
+            (pcontactor->node1 == node_beta && pcontactor->node2 == node_alpha))
+        {
+            return pcontactor;
+        }
+    }
+    return NULL;
+}
+
+static void close_edge_contactors(ID_TYPE node_alpha, ID_TYPE node_beta)
+{
+    ID_TYPE appendix = ID_VAIN;
+    struct Alloc_contactorObj *pcontactor = find_contactor_bynode(node_alpha, node_beta, &appendix);
+    if (NULL != pcontactor)
+    {
+        pcontactor->isClosed = true;
+        /*
+         * 仅对“线环-线环”对径边闭合镜像接触器：对径接触器成对出现（直径两端各一个），
+         * 走直径必须同时闭合两端。而矩阵-线环边（appendix 非空）只闭合被挑选线环节点
+         * 一侧的单个对径分段，绝不闭合其镜像，否则会在功率潮流路径中形成环路。
+         */
+        if (ID_VAIN == appendix &&
+            pcontactor->id > NODES_MAX_ENCIRCLE && pcontactor->id <= 2 * NODES_MAX_ENCIRCLE)
+        {
+            ID_TYPE mirror = (pcontactor->id <= 3 * NODES_MAX_ENCIRCLE / 2)
+                                 ? pcontactor->id + NODES_MAX_ENCIRCLE / 2
+                                 : pcontactor->id - NODES_MAX_ENCIRCLE / 2;
+            refer_Contactor_Extracted(mirror)->isClosed = true;
+        }
+    }
+    if (ASSERT_CONTACTOR_ID(appendix))
+    {
+        refer_Contactor_Extracted(appendix)->isClosed = true;
+    }
+}
+
+/**
+ * @brief 更新某个充电桩相关的接触器状态：构建无环生成树
+ *
+ * 原则：
+ *   1. 优先树形分叉，避免长链
+ *   2. 分叉点尽量靠近直连根节点（BFS距离最小）
+ *   3. 各分叉节点数量尽量平均
+ *   4. 环形边优先于对角线/矩阵边
+ *
+ * 线环节点与半矩阵节点共用同一张图，因此本函数对两类节点统一建树，
+ * 不再需要单独的半矩阵接触器维护逻辑。
+ *
+ * @param pplug 充电桩对象
+ */
 static void
 acyclic_tree_building(struct Alloc_plugObj *pplug)
 {
@@ -292,12 +462,11 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
         return;
     }
 
-    /* ── 0. 先断开所有相关接触器 ── */
-    for (int i = 1; i <= 2 * NODES_MAX_ENCIRCLE; i++)
+    /* ── 0. 先断开所有相关接触器（含矩阵接触器） ── */
+    for (int i = 1; i <= (int)CONTACTOR_MAX; i++)
     {
         struct Alloc_contactorObj *c = refer_Contactor_Extracted(i);
-        if (pau_vector_contains(pplug->allocatedNodes, c->node1) &&
-            pau_vector_contains(pplug->allocatedNodes, c->node2))
+        if (contactor_belongs_plug(c, pplug))
         {
             c->isClosed = false;
         }
@@ -324,12 +493,12 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
     while (qh < qt)
     {
         ID_TYPE u = queue[qh++];
-        ID_TYPE neighbors[3] = {0};
+        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
         get_neighbors(u, neighbors);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             ID_TYPE v = neighbors[i];
-            if (!ASSERT_NODE_ID_ENCIRCLE(v))
+            if (!ASSERT_NODE_ID(v))
             {
                 continue;
             }
@@ -353,10 +522,6 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
     clear_parent();
     PAU_VECTOR_FOREACH(node, pplug->allocatedNodes)
     {
-        if (node > NODES_MAX_ENCIRCLE)
-        {
-            continue;
-        }
         if (refer_Node_Extracted(node)->pseudocycledon)
         {
             continue;
@@ -373,20 +538,16 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
     {
         ID_TYPE u;     /* 较远节点 */
         ID_TYPE v;     /* 较近节点（候选父） */
-        bool diagonal; /* 是否对角线边 */
+        bool diagonal; /* 是否对角线/矩阵边 */
         int distSum;   /* dist[u] + dist[v]，越小越靠近根 */
         int childLoad; /* childCount[v]，越小分支越均衡 */
     } CandidateEdge;
 
-    CandidateEdge candidates[MAXNODES_MEM_LMT * 3];
+    CandidateEdge candidates[MAX_GRAPH_UNDIRECTED_EDGES];
     int candidateCnt = 0;
 
     PAU_VECTOR_FOREACH(node, pplug->allocatedNodes)
     {
-        if (node > NODES_MAX_ENCIRCLE)
-        {
-            continue;
-        }
         if (refer_Node_Extracted(node)->pseudocycledon)
         {
             continue;
@@ -396,12 +557,12 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
             continue; /* 不在 BFS 可达范围内 */
         }
 
-        ID_TYPE neighbors[3] = {0};
+        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
         get_neighbors(node, neighbors);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             ID_TYPE nbr = neighbors[i];
-            if (!ASSERT_NODE_ID_ENCIRCLE(nbr))
+            if (!ASSERT_NODE_ID(nbr))
             {
                 continue;
             }
@@ -435,7 +596,8 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
                 e.u = nbr;
                 e.v = node;
             }
-            e.diagonal = (i == 2); /* get_neighbors 第3个是对径 */
+            /* get_neighbors 前两个是线环/下端相邻边，其余为对径或矩阵边 */
+            e.diagonal = (i >= 2);
             e.distSum = dist[e.u] + dist[e.v];
             e.childLoad = 0; /* 排序后再根据实时 childCount 决定，这里先填0 */
             candidates[candidateCnt++] = e;
@@ -455,7 +617,7 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
             }
             else if (candidates[j].distSum == candidates[minIdx].distSum)
             {
-                /* 环形优先于对角线 */
+                /* 环形优先于对角线/矩阵边 */
                 if (!candidates[j].diagonal && candidates[minIdx].diagonal)
                 {
                     swap = true;
@@ -485,183 +647,12 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
             continue;
         }
 
-        /* 闭合接触器 */
-        for (int j = 1; j <= 2 * NODES_MAX_ENCIRCLE; j++)
-        {
-            struct Alloc_contactorObj *c = refer_Contactor_Extracted(j);
-            if ((c->node1 == e.u && c->node2 == e.v) ||
-                (c->node1 == e.v && c->node2 == e.u))
-            {
-                c->isClosed = true;
-                break;
-            }
-        }
+        /* 闭合接触器（矩阵-线环边会同时闭合 4XX 与其对径分段） */
+        close_edge_contactors(e.u, e.v);
 
         unite(e.u, e.v);
         childCount[e.v]++; /* 记录父节点子节点数，供后续均衡使用 */
     }
-
-    /* ── 7. 同步半矩阵接触器 ── */
-    for (int i = NODES_MAX_ENCIRCLE + 1; i <= 2 * NODES_MAX_ENCIRCLE; i++)
-    {
-        struct Alloc_contactorObj *c = refer_Contactor_Extracted(i);
-        struct Alloc_nodeObj *n1 = refer_Node_Extracted(c->node1);
-        struct Alloc_nodeObj *n2 = refer_Node_Extracted(c->node2);
-        if (pplug->id != n1->plug_id || pplug->id != n2->plug_id)
-        {
-            continue;
-        }
-        if (c->isClosed)
-        {
-            if (i > NODES_MAX_ENCIRCLE && i <= 3 * NODES_MAX_ENCIRCLE / 2)
-            {
-                refer_Contactor_Extracted(i + NODES_MAX_ENCIRCLE / 2)->isClosed = true;
-            }
-            else
-            {
-                refer_Contactor_Extracted(i - NODES_MAX_ENCIRCLE / 2)->isClosed = true;
-            }
-        }
-    }
-}
-// 计算nodeid到avatarnodes数列最小差值的nodeid
-static ID_TYPE calc_min_distance(ID_TYPE nodeid, PAU_Vector *avatar_nodes_collection)
-{
-
-    int min_distance = -1;
-    ID_TYPE minimum_node = ID_VAIN;
-    PAU_VECTOR_FOREACH(node, avatar_nodes_collection)
-    {
-        ID_TYPE distance = abs(nodeid - node);
-        if (min_distance == -1 || distance < min_distance)
-        {
-            min_distance = distance;
-            minimum_node = node;
-        }
-    }
-    return minimum_node;
-}
-static struct Alloc_contactorObj *find_contactor_bynode(ID_TYPE node_alpha, ID_TYPE node_beta)
-{
-    if (!ASSERT_NODE_ID(node_alpha) || !ASSERT_NODE_ID(node_beta))
-    {
-        return NULL;
-    }
-    for (ID_TYPE c = 1; c <= CONTACTOR_MAX; c++)
-    {
-        struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
-        if (pcontactor->node1 == node_alpha && pcontactor->node2 == node_beta)
-        {
-            return pcontactor;
-        }
-        if (pcontactor->node1 == node_beta && pcontactor->node2 == node_alpha)
-        {
-            return pcontactor;
-        }
-    }
-    return NULL;
-}
-static void semi_matrix_contactor_update(struct Alloc_plugObj *pplug)
-{
-    if (!ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
-    {
-        return;
-    }
-
-    if (NULL == pplug)
-    {
-        for (size_t i = NODES_MAX_ENCIRCLE * 2 + 1; i <= CONTACTOR_MAX; i++)
-        {
-            struct Alloc_contactorObj *c = refer_Contactor_Extracted(i);
-            c->isClosed = false;
-        }
-        return;
-    }
-    if (pau_vector_size(pplug->allocatedNodes) == 0)
-    {
-        return;
-    }
-    PAU_Vector *avatar_nodes_collection = pau_vector_create(NODES_MAX_ENCIRCLE / 2);
-    if (NULL == avatar_nodes_collection)
-    {
-        return;
-    }
-    int maxcontactor_nbr = 5 * NODES_MAX_ENCIRCLE / 2;
-    maxcontactor_nbr = CONTACTOR_MAX - maxcontactor_nbr > 0 ? CONTACTOR_MAX - maxcontactor_nbr : 0;
-
-    // 遍历所有接触器，判断是否闭合
-    for (size_t i = NODES_MAX_ENCIRCLE * 2 + maxcontactor_nbr + 1; i <= CONTACTOR_MAX; i++)
-    {
-        struct Alloc_contactorObj *c = refer_Contactor_Extracted(i);
-
-        if (c->node2 < CONTACTOR_SPLICE_MULTIPLE || pplug->id != refer_Node_Extracted(c->node1)->plug_id)
-        {
-            continue;
-        }
-        ID_TYPE nodeid_alpha = c->node2 / CONTACTOR_SPLICE_MULTIPLE;
-        ID_TYPE nodeid_beta = c->node2 % CONTACTOR_SPLICE_MULTIPLE;
-        if (pplug->id != refer_Node_Extracted(nodeid_alpha)->plug_id && pplug->id != refer_Node_Extracted(nodeid_beta)->plug_id)
-        {
-            continue;
-        }
-        c->isClosed = true;
-
-        pau_vector_append(avatar_nodes_collection, c->node1);
-        struct Alloc_nodeObj *alpha = refer_Node_Extracted(nodeid_alpha);
-        struct Alloc_nodeObj *beta = refer_Node_Extracted(nodeid_beta);
-
-        const bool alphaOwned = (pplug->id == alpha->plug_id);
-        const bool betaOwned = (pplug->id == beta->plug_id);
-        const bool bothPseudoCycledOn = alpha->pseudocycledon && beta->pseudocycledon;
-
-        //  非“双伪环路导通”时，alpha、beta 同属同一枪时优先处理 alpha。
-
-        if (alphaOwned)
-        {
-            refer_Contactor_Extracted(i - maxcontactor_nbr - NODES_MAX_ENCIRCLE)->isClosed = true;
-
-            if (alpha->pseudocycledon)
-            {
-                pau_vector_remove(avatar_nodes_collection, c->node1);
-            }
-        }
-
-        if (betaOwned && (bothPseudoCycledOn || !alphaOwned))
-        {
-            refer_Contactor_Extracted(i - maxcontactor_nbr - NODES_MAX_ENCIRCLE / 2)->isClosed = true;
-
-            if (beta->pseudocycledon)
-            {
-                pau_vector_remove(avatar_nodes_collection, c->node1);
-            }
-        }
-    }
-    // 遍历所有plug占据的矩阵节点，每个节点在avatar_nodes_collection中有一个差值最小的节点，该节点与遍历节点间的接触器闭合
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->plug_id != pplug->id || nodeid <= NODES_MAX_ENCIRCLE)
-        {
-            continue;
-        }
-        if (pau_vector_contains(avatar_nodes_collection, nodeid))
-        {
-            continue;
-        }
-
-        ID_TYPE mindist_node = calc_min_distance(nodeid, avatar_nodes_collection);
-        if (ID_VAIN == mindist_node)
-        {
-            continue;
-        }
-        struct Alloc_contactorObj *pcontactor = find_contactor_bynode(nodeid, mindist_node);
-        if (NULL == pcontactor)
-        {
-            continue;
-        }
-        pcontactor->isClosed = true;
-    }
-    pau_vector_destroy(avatar_nodes_collection);
 }
 void updateContactorStates(ID_TYPE plugid, ID_TYPE nodeid)
 {
@@ -689,19 +680,25 @@ void updateContactorStates(ID_TYPE plugid, ID_TYPE nodeid)
     }
     //
     expseudous_eisalethes(pplug);
-    //  为单个充电桩已占用的节点集合，自动闭合接触器，形成一棵无环、连通、优先走环形边、必要时走对角线边的生成树。
+    // 半矩阵接触器为多桩共享，先统一断开，再按各桩生成树重新闭合
+    if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
+    {
+        for (size_t i = 2 * NODES_MAX_ENCIRCLE + 1; i <= CONTACTOR_MAX; i++)
+        {
+            refer_Contactor_Extracted(i)->isClosed = false;
+        }
+    }
+    //  为单个充电桩已占用的节点集合，自动闭合接触器，形成一棵无环、连通、优先走环形边、必要时走对角线/矩阵边的生成树。
     acyclic_tree_building(pplug);
-
-    // 对于半矩阵+线环结构,判断矩阵接触器是否闭合
-    semi_matrix_contactor_update(NULL);
+    // 其余在充充电桩的接触器生成树也需重算，保证共享矩阵母线上的路径一致
     for (ID_TYPE i = 1; i <= PLUG_MAX; i++)
     {
-        struct Alloc_plugObj *pplug = refer_Plug_Extracted(i);
-        if (PLUG_IDLE == pplug->state)
+        struct Alloc_plugObj *pother = refer_Plug_Extracted(i);
+        if (PLUG_IDLE == pother->state || pother->id == plugid)
         {
             continue;
         }
-        semi_matrix_contactor_update(pplug);
+        acyclic_tree_building(pother);
     }
 }
 
@@ -984,14 +981,14 @@ static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t qu
         return ID_VAIN;
     }
     ID_TYPE optimal_index = ID_VAIN;
-    PAU_Vector *scorelist = pau_vector_create(NODES_MAX_ENCIRCLE);
+    PAU_Vector *scorelist = pau_vector_create(NODE_MAX);
     if (NULL == scorelist)
     {
         return ID_VAIN;
     }
     dual_endings_bfs_shell(startid, plugid, NEARER);
 
-    for (int nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
+    for (int nodeid = 1; nodeid <= (int)NODE_MAX; nodeid++)
     {
         size_t score = makeScore(SENARIO_ACQUIRE, quota, plugid, 1, nodeid, 1);
         // pau_printf("[%02d]%d \r\n", nodeid, score);
@@ -999,17 +996,15 @@ static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t qu
         pau_vector_set(scorelist, nodeid, score);
     }
 
-    // 找到得分最高并且大于及格线的点
+    // 找到得分最高并且大于及格线的点（线环 + 半矩阵节点统一比较）
     int bestScore = -1;
-    for (int n = 0; n < NODES_MAX_ENCIRCLE; ++n)
+    for (int nodeid = 1; nodeid <= (int)NODE_MAX; ++nodeid)
     {
-        int i = startid + NODES_MAX_ENCIRCLE + ((n + 1) / 2) * ((n + 1) % 2 > 0 ? 1 : -1);
-        i = ((i - 1) % NODES_MAX_ENCIRCLE) + 1;
-        int score = (int)pau_vector_at(scorelist, i);
+        int score = (int)pau_vector_at(scorelist, nodeid);
         if (score > bestScore && score > WEIGHT_5)
         {
             bestScore = score;
-            optimal_index = i;
+            optimal_index = nodeid;
         }
     }
     if (optimal_index != ID_VAIN)
@@ -1021,21 +1016,20 @@ static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t qu
 }
 static int find_euelect_node_away(ID_TYPE plugid, ID_TYPE startid, size_t quota)
 {
+    (void)quota;
     if (!ASSERT_PLUG_ID(plugid) || !ASSERT_NODE_ID_ENCIRCLE(startid))
     {
         return ID_VAIN;
     }
 
     ID_TYPE max_index = ID_VAIN;
-    for (int n = 1; n <= NODES_MAX_ENCIRCLE; n++)
+    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
     {
-        int i = (startid + NODES_MAX_ENCIRCLE / 2 - 1) % NODES_MAX_ENCIRCLE + 1;
-        i = i + NODES_MAX_ENCIRCLE + (n / 2) * (n % 2 > 0 ? 1 : -1);
-        i = ((i - 1) % NODES_MAX_ENCIRCLE) + 1;
-        //  检查是否为非ID_VAIN且当前是最小值
-        if (get_dist(i) >= 0 && get_locked(i) == plugid && (max_index == ID_VAIN || get_dist(i) > get_dist(max_index)))
+        //  检查是否为非ID_VAIN且当前是最大值（线环 + 半矩阵节点统一比较）
+        if (get_dist(nodeid) >= 0 && get_locked(nodeid) == plugid &&
+            (max_index == ID_VAIN || get_dist(nodeid) > get_dist(max_index)))
         {
-            max_index = i;
+            max_index = nodeid;
         }
     }
     if (max_index != ID_VAIN)
@@ -1045,56 +1039,27 @@ static int find_euelect_node_away(ID_TYPE plugid, ID_TYPE startid, size_t quota)
     return max_index; // 返回最大值的索引，如果没找到则返回-1
 }
 
-static bool assert_exclusive_babel(ID_TYPE avatar, ID_TYPE babel_plug)
-{
-    if (!ASSERT_NODE_ID(avatar) || !ASSERT_PLUG_ID(babel_plug))
-    {
-        return false;
-    }
-    for (ID_TYPE nodeid = NODES_MAX_ENCIRCLE + 1; nodeid <= NODE_MAX; nodeid++)
-    {
-        if (nodeid == avatar)
-        {
-            continue;
-        }
-        if (refer_Node_Extracted(nodeid)->plug_id != babel_plug)
-        {
-            continue;
-        }
-        ID_TYPE lowernodeid_alpha = get_neighbor_lower_alpha(nodeid);
-        ID_TYPE lowernodeid_beta = get_neighbor_lower_beta(nodeid);
-        if (refer_Node_Extracted(lowernodeid_alpha)->plug_id == babel_plug)
-        {
-            return false;
-        }
-        if (refer_Node_Extracted(lowernodeid_beta)->plug_id == babel_plug)
-        {
-            return false;
-        }
-    }
-    return true;
-}
 static bool reactive_tuning_encircle(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
     {
         return false;
     }
-    // 1.先收集所有线环上能获取到的节点的所属充电桩plugid
+    // 1.先收集所有已占节点邻接到的其他充电桩plugid（线环 + 半矩阵统一处理）
     PAU_Vector *plugs_shovedover = pau_vector_create(PAU_VECTOR_DEFAULT_CAPACITY);
     PAU_Vector *nodes_shovedover = pau_vector_create(PAU_VECTOR_DEFAULT_CAPACITY);
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
     {
-        if (!ASSERT_NODE_ID_ENCIRCLE(nodeid))
-        {
-            continue;
-        }
-        ID_TYPE node_neighbors[3] = {ID_VAIN, ID_VAIN, ID_VAIN};
+        ID_TYPE node_neighbors[MAX_NODE_NEIGHBORS] = {ID_VAIN};
         get_neighbors(nodeid, node_neighbors);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             ID_TYPE neighborid = node_neighbors[i];
+            if (!ASSERT_NODE_ID(neighborid))
+            {
+                break;
+            }
             struct Alloc_nodeObj *pneighbor = refer_Node_Extracted(neighborid);
             if (ID_VAIN < pneighbor->plug_id && !pau_vector_contains(plugs_shovedover, pneighbor->plug_id))
             {
@@ -1118,18 +1083,22 @@ static bool reactive_tuning_encircle(ID_TYPE plugid)
 
     ID_TYPE plugid_shovedover = ID_VAIN;
     ID_TYPE nodeid_replacement = ID_VAIN;
-    // 2.遍历所有线环上的空闲节点,如果这个空闲点有邻接点在被收集到的充电桩充电
-    for (ID_TYPE nodeid = 1; nodeid <= NODES_MAX_ENCIRCLE; nodeid++)
+    // 2.遍历所有空闲节点,如果这个空闲点有邻接点在被收集到的充电桩充电
+    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
     {
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
         if (ID_VAIN < pnode->plug_id) // NODE_OUTORDER和NODE_IDLEFREE状态都可以
         {
             continue;
         }
-        ID_TYPE node_neighbors[3] = {ID_VAIN, ID_VAIN, ID_VAIN};
+        ID_TYPE node_neighbors[MAX_NODE_NEIGHBORS] = {ID_VAIN};
         get_neighbors(nodeid, node_neighbors);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
+            if (!ASSERT_NODE_ID(node_neighbors[i]))
+            {
+                break;
+            }
             struct Alloc_nodeObj *pneighbor = refer_Node_Extracted(node_neighbors[i]);
             if (ID_VAIN < pneighbor->plug_id && pau_vector_contains(plugs_shovedover, pneighbor->plug_id))
             {
@@ -1191,73 +1160,14 @@ static bool reactive_tuning_encircle(ID_TYPE plugid)
     pau_vector_destroy(nodes_shovedover);
     return (ID_VAIN == plugid_shovedover);
 }
-static bool reactive_tuning_semimatrix(ID_TYPE plugid)
-{
-    if (!ASSERT_PLUG_ID(plugid))
-    {
-        return false;
-    }
-    ID_TYPE nodeid_freeidle = ID_VAIN;
-    for (ID_TYPE nodeid = NODES_MAX_ENCIRCLE + 1; nodeid <= NODE_MAX; nodeid++)
-    {
-        if (ID_VAIN == refer_Node_Extracted(nodeid)->plug_id)
-        {
-            nodeid_freeidle = nodeid;
-            break;
-        }
-    }
-    if (ID_VAIN == nodeid_freeidle)
-    {
-        return false;
-    }
-    PAU_VECTOR_FOREACH(nodeid, refer_Plug_Extracted(plugid)->allocatedNodes)
-    {
-        ID_TYPE avatar_node = get_neighbor_upper(nodeid);
-        ID_TYPE plug_shovedover = get_node_chargingplugid(avatar_node);
-        if (ID_VAIN == nodeid_freeidle)
-        {
-            continue;
-        }
-        if (ID_VAIN == plug_shovedover)
-        {
-            continue;
-        }
-        if (plug_shovedover == plugid)
-        {
-            continue;
-        }
-        if (1 >= get_plug_allocated_cnt_excircle(plug_shovedover))
-        {
-            continue;
-        }
-        if (assert_exclusive_babel(avatar_node, plug_shovedover))
-        {
-            continue;
-        }
-        push_NodetoPlug(nodeid_freeidle, plug_shovedover);
-        pull_NodefromPlug(avatar_node, plug_shovedover);
-        push_NodetoPlug(avatar_node, plugid);
-        update_plug_shortage_power(plugid);
-        update_plug_shortage_power(plug_shovedover);
-        set_plug_refresh_flag(plugid, true);
-        set_plug_refresh_flag(plug_shovedover, true);
-        nodeid_freeidle = ID_VAIN;
-    }
-    return ID_VAIN == nodeid_freeidle;
-}
 bool occupiednodes_preempt(ID_TYPE plugid)
 {
     if (!ASSERT_PLUG_ID(plugid))
     {
         return false;
     }
-    bool res = false;
-    res = reactive_tuning_encircle(plugid);
-    if (!res)
-    {
-        res = reactive_tuning_semimatrix(plugid);
-    }
-    return res;
+    // 统一图下，线环与半矩阵节点的抢占均由 reactive_tuning_encircle 处理
+    return reactive_tuning_encircle(plugid);
 }
 
 static bool node_common_operate(ID_TYPE plugid, bool opType)
@@ -1331,16 +1241,14 @@ static bool isConnectedNode(ID_TYPE nodeid)
 }
 static int get_neighbors_occupied(ID_TYPE nodeid)
 {
-    if (!ASSERT_NODE_ID_ENCIRCLE(nodeid))
+    if (!ASSERT_NODE_ID(nodeid))
     {
         return 4;
     }
-    ID_TYPE neighbor[3];
-    neighbor[0] = get_neighbor_left(nodeid);
-    neighbor[1] = get_neighbor_right(nodeid);
-    neighbor[2] = get_neighbor_diagonal(nodeid);
+    ID_TYPE neighbor[MAX_NODE_NEIGHBORS] = {0};
+    get_neighbors(nodeid, neighbor);
     int cnt = 0;
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
     {
         if (neighbor[i] != ID_VAIN && refer_Node_Extracted(neighbor[i])->plug_id != ID_VAIN)
         {
@@ -1456,14 +1364,14 @@ static bool idlenodes_encircle_donatio(ID_TYPE plugid)
     bool ret = false;
     PAU_VECTOR_FOREACH(idlenode, idlenode_list)
     {
-        ID_TYPE neighbor[3] = {0};
+        ID_TYPE neighbor[MAX_NODE_NEIGHBORS] = {0};
         struct
         {
             size_t score;
             ID_TYPE plugid;
-        } plug_score[3] = {{0, ID_VAIN}}, optimal = {0, ID_VAIN};
+        } plug_score[MAX_NODE_NEIGHBORS] = {{0, ID_VAIN}}, optimal = {0, ID_VAIN};
         get_neighbors(idlenode, neighbor);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             ID_TYPE neighborid = neighbor[i];
             if (neighborid == ID_VAIN)
@@ -1477,7 +1385,7 @@ static bool idlenodes_encircle_donatio(ID_TYPE plugid)
                 plug_score[i].score = makeScore(SENARIO_INHERIT, 0, plugid, pneighbor->plug_id, idlenode, neighborid);
             }
         }
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             if (plug_score[i].score > optimal.score)
             {
@@ -1678,33 +1586,6 @@ bool have_plug_occupied_matrixnode(ID_TYPE plugid)
         }
     }
     return false;
-}
-static void collect_avatar_nodes(PAU_Vector *collect_vec, ID_TYPE plugid)
-{
-    int maxcontactor_nbr = 5 * NODES_MAX_ENCIRCLE / 2;
-    maxcontactor_nbr = CONTACTOR_MAX - maxcontactor_nbr > 0 ? CONTACTOR_MAX - maxcontactor_nbr : 0;
-    // 遍历所有接触器，判断是否闭合
-    for (size_t c = NODES_MAX_ENCIRCLE * 2 + maxcontactor_nbr + 1; c <= CONTACTOR_MAX; c++)
-    {
-        struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
-        if (!pcontactor->isClosed)
-        {
-            continue;
-        }
-        struct Alloc_nodeObj *pnode = refer_Node_Extracted(pcontactor->node1);
-
-        if (pnode->plug_id != plugid)
-        {
-            continue;
-        }
-        ID_TYPE nodeid_alpha = pcontactor->node2 / CONTACTOR_SPLICE_MULTIPLE;
-        ID_TYPE nodeid_beta = pcontactor->node2 % CONTACTOR_SPLICE_MULTIPLE;
-        if (refer_Node_Extracted(nodeid_alpha)->pseudocycledon || refer_Node_Extracted(nodeid_beta)->pseudocycledon)
-        {
-            continue;
-        }
-        pau_vector_append(collect_vec, pcontactor->node1);
-    }
 }
 // 释放矩阵中的节点
 static bool release_matrix_node(ID_TYPE plugid)
@@ -1937,212 +1818,170 @@ void sort_flowmap_by_hops(FlowMap *map, size_t n)
         }
     }
 }
-int excircle_flowDirectioned(ID_TYPE plugid, FlowMap *pmap, FlowMap *pmap_fin)
+/*
+ * 对径接触器成对出现（直径两端各一个），返回接触器 contactorid 的镜像接触器编号。
+ */
+static ID_TYPE diagonal_mirror(ID_TYPE contactorid)
 {
-    if (!ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
-    {
-        return 0;
-    }
-    if (!ASSERT_PLUG_ID(plugid) || NULL == pmap)
-    {
-        return 0;
-    }
-    FlowMap *pobject = pmap;
-    PAU_Vector *avatar_collcection = pau_vector_create(NODES_MAX_ENCIRCLE / 2);
-    if (NULL == avatar_collcection)
-    {
-        return 0;
-    }
-    collect_avatar_nodes(avatar_collcection, plugid);
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    hops_refresh(pplug->connectedNode, plugid);
-    int index = 0;
-    for (size_t c = 2 * NODES_MAX_ENCIRCLE + 1; c <= CONTACTOR_MAX; c++)
-    {
-        struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
-        if (!pcontactor->isClosed)
-        {
-            continue;
-        }
-        // pau_printf("[TACTIC] excircle_flowDirectioned contactorid:%d (%d-%d) is closed\r\n", c, pcontactor->node1, pcontactor->node2);
-        if (pcontactor->node1 < NODES_MAX_ENCIRCLE || pcontactor->node2 < NODES_MAX_ENCIRCLE)
-        {
-            continue;
-        }
-        if (pcontactor->node2 > CONTACTOR_SPLICE_MULTIPLE)
-        {
-            if (plugid != refer_Node_Extracted(pcontactor->node1)->plug_id)
-            {
-                continue;
-            }
-            ID_TYPE nodeid_alpha = pcontactor->node2 / CONTACTOR_SPLICE_MULTIPLE;
-            ID_TYPE nodeid_beta = pcontactor->node2 % CONTACTOR_SPLICE_MULTIPLE;
-
-            if (plugid != refer_Node_Extracted(nodeid_alpha)->plug_id && plugid != refer_Node_Extracted(nodeid_beta)->plug_id)
-            {
-                continue;
-            }
-        }
-        else if (plugid != refer_Node_Extracted(pcontactor->node1)->plug_id || plugid != refer_Node_Extracted(pcontactor->node2)->plug_id)
-        {
-            continue;
-        }
-        pobject->contactorid = c;
-        if (pcontactor->node2 > CONTACTOR_SPLICE_MULTIPLE)
-        {
-            pobject->direction = pcontactor->node1;
-            ID_TYPE nodeid_alpha = pcontactor->node2 / CONTACTOR_SPLICE_MULTIPLE;
-            ID_TYPE nodeid_beta = pcontactor->node2 % CONTACTOR_SPLICE_MULTIPLE;
-            if (plugid == refer_Node_Extracted(nodeid_alpha)->plug_id && plugid != refer_Node_Extracted(nodeid_beta)->plug_id)
-            {
-                pobject->appendix = nodeid_alpha;
-
-                if (refer_Node_Extracted(nodeid_alpha)->pseudocycledon)
-                {
-                    continue;
-                }
-                pobject->genogram = nodeid_alpha;
-                pobject->hops = get_hops_occupied(pplug->connectedNode, nodeid_alpha, plugid) + 1;
-            }
-            else if (plugid != refer_Node_Extracted(nodeid_alpha)->plug_id && plugid == refer_Node_Extracted(nodeid_beta)->plug_id)
-            {
-                pobject->appendix = nodeid_beta;
-
-                if (refer_Node_Extracted(nodeid_beta)->pseudocycledon)
-                {
-                    continue;
-                }
-                pobject->genogram = nodeid_beta;
-                pobject->hops = get_hops_occupied(pplug->connectedNode, nodeid_beta, plugid) + 1;
-            }
-            else if (plugid == refer_Node_Extracted(nodeid_alpha)->plug_id && plugid == refer_Node_Extracted(nodeid_beta)->plug_id)
-            {
-                pobject->appendix = nodeid_alpha;
-
-                if (refer_Node_Extracted(nodeid_alpha)->pseudocycledon && refer_Node_Extracted(nodeid_beta)->pseudocycledon)
-                {
-                    continue;
-                }
-                pobject->genogram = nodeid_alpha;
-                pobject->hops = get_hops_occupied(pplug->connectedNode, nodeid_alpha, plugid) + 1;
-            }
-        }
-        else
-        {
-            if (pau_vector_contains(avatar_collcection, pcontactor->node1))
-            {
-                pobject->direction = pcontactor->node2;
-                pobject->genogram = pcontactor->node1;
-                pobject->hops = 99;
-            }
-            if (pau_vector_contains(avatar_collcection, pcontactor->node2))
-            {
-                pobject->direction = pcontactor->node1;
-                pobject->genogram = pcontactor->node2;
-                pobject->hops = 99;
-            }
-        }
-        pobject = pmap + ++index;
-        if (pobject > pmap_fin)
-        {
-            pobject = pmap;
-        }
-    }
-
-    // 找到pseudocycledon为真的节点,找出对角线接触器编号
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        if (!refer_Node_Extracted(nodeid)->pseudocycledon)
-        {
-            continue;
-        }
-        pobject->direction = nodeid;
-        pobject->contactorid = nodeid + NODES_MAX_ENCIRCLE;
-        pobject->appendix = CONTACTOR_MAX - NODES_MAX_ENCIRCLE / 2 + (nodeid > NODES_MAX_ENCIRCLE / 2 ? nodeid - NODES_MAX_ENCIRCLE / 2 : nodeid);
-        pobject->hops = 100;
-        struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(pobject->appendix);
-        pobject->genogram = pcontactor->node1;
-        pobject = pmap + ++index;
-        if (pobject > pmap_fin)
-        {
-            pobject = pmap;
-        }
-    }
-    pau_vector_destroy(avatar_collcection);
-    return index;
+    return (contactorid <= 3 * NODES_MAX_ENCIRCLE / 2)
+               ? contactorid + NODES_MAX_ENCIRCLE / 2
+               : contactorid - NODES_MAX_ENCIRCLE / 2;
 }
 
-FlowMap *encircle_flowDirectioned(ID_TYPE plugid, FlowMap *pobject)
+/*
+ * 解析连接 node 与其父节点 parent 的潮流接触器。
+ * 返回主接触器编号；若该条潮流路径还涉及第二个接触器（对径分段或对径镜像），
+ * 通过 secondary 输出其编号，否则置 ID_VAIN。
+ * 仅当主接触器（及必要的副接触器）均已闭合时返回有效值，否则返回 ID_VAIN。
+ */
+static ID_TYPE resolve_edge_contactors(ID_TYPE node, ID_TYPE parent, ID_TYPE *secondary)
+{
+    if (NULL != secondary)
+    {
+        *secondary = ID_VAIN;
+    }
+    ID_TYPE appendix = ID_VAIN;
+    struct Alloc_contactorObj *pc = find_contactor_bynode(node, parent, &appendix);
+    if (NULL == pc || !pc->isClosed)
+    {
+        return ID_VAIN;
+    }
+
+    ID_TYPE sec = ID_VAIN;
+    if (ASSERT_CONTACTOR_ID(appendix))
+    {
+        /* 矩阵-线环边：appendix 即线环节点一侧的对径分段接触器编号 */
+        sec = appendix;
+    }
+    else if (pc->id > NODES_MAX_ENCIRCLE && pc->id <= 2 * NODES_MAX_ENCIRCLE)
+    {
+        /* 线环-线环对径边：对径接触器成对闭合，副接触器为镜像 */
+        sec = diagonal_mirror(pc->id);
+    }
+
+    if (ASSERT_CONTACTOR_ID(sec) && !refer_Contactor_Extracted(sec)->isClosed)
+    {
+        return ID_VAIN;
+    }
+    if (NULL != secondary)
+    {
+        *secondary = sec;
+    }
+    return pc->id;
+}
+
+/*
+ * @brief 生成单个充电桩的功率潮流方向图（统一图，含线环与半矩阵节点）
+ *
+ * 以直连节点为根，沿已闭合的接触器在统一图上做 BFS，对每个已分配节点求出：
+ *   - direction：节点编号；
+ *   - contactorid：该节点潮流指向直连节点所经的主接触器编号；
+ *   - appendix：若该路径含第二个接触器（对径分段/对径镜像），为其编号，否则 ID_VAIN；
+ *   - hops：该节点到直连节点的距离；
+ *   - genogram：功率潮流经该节点流向的下一个节点编号（父节点）。
+ *
+ * 结果按 hops 从小到大排序（父节点必在子节点之前），伪环路节点以 hops=100 排在末尾。
+ *
+ * @param plugid 充电桩编号
+ * @param pobject 输出缓冲（长度至少 MAXNODES_MEM_LMT）
+ * @return 指向输出末尾之后的指针；失败返回 NULL
+ */
+FlowMap *flow_directioned(ID_TYPE plugid, FlowMap *pobject)
 {
     if (!ASSERT_PLUG_ID(plugid) || NULL == pobject)
     {
         return NULL;
     }
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    size_t cnt = pau_vector_size(pplug->allocatedNodes);
-    hops_refresh(pplug->connectedNode, plugid);
-    pobject->contactorid = 254;
-    pobject->direction = pplug->connectedNode;
-    pobject->appendix = 0;
-    pobject->hops = 0;
-    pobject->genogram = pplug->connectedNode;
-    size_t index_map = 1;
-    for (size_t c = 1; c <= 3 * NODES_MAX_ENCIRCLE / 2; c++)
+    ID_TYPE root = pplug->connectedNode;
+
+    /* 沿已闭合接触器 BFS，得到各节点到直连节点的距离 */
+    hops_refresh(root, plugid);
+
+    size_t index = 0;
+
+    /* 根节点（直连节点） */
+    pobject[index].direction = root;
+    pobject[index].contactorid = 254; /* 虚拟根接触器 */
+    pobject[index].appendix = 0;
+    pobject[index].hops = 0;
+    pobject[index].genogram = root;
+    index++;
+
+    /* 已分配的普通节点：找到父节点并解析接触器 */
+    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
     {
-        struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(c);
-        if (!pcontactor->isClosed)
+        if (nodeid == root || is_node_pseudocycledon(nodeid))
         {
             continue;
         }
-        if (pcontactor->node1 > NODES_MAX_ENCIRCLE || pcontactor->node2 > NODES_MAX_ENCIRCLE)
+        int hops = get_dist(nodeid);
+        if (hops <= 0)
         {
-            continue;
+            continue; /* 不可达 */
         }
 
-        if (plugid != refer_Node_Extracted(pcontactor->node1)->plug_id || plugid != refer_Node_Extracted(pcontactor->node2)->plug_id)
+        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
+        get_neighbors(nodeid, neighbors);
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
-            continue;
-        }
-
-        (pobject + index_map)->contactorid = c;
-        int hops_node1 = get_hops_occupied(pplug->connectedNode, pcontactor->node1, plugid);
-        int hops_node2 = get_hops_occupied(pplug->connectedNode, pcontactor->node2, plugid);
-        (pobject + index_map)->direction = hops_node1 > hops_node2 ? pcontactor->node1 : pcontactor->node2;
-        (pobject + index_map)->genogram = hops_node1 > hops_node2 ? pcontactor->node2 : pcontactor->node1;
-        (pobject + index_map)->hops = hops_node1 > hops_node2 ? hops_node1 : hops_node2;
-        if (c > NODES_MAX_ENCIRCLE)
-        {
-            if (refer_Contactor_Extracted(c + NODES_MAX_ENCIRCLE / 2)->isClosed)
+            ID_TYPE nbr = neighbors[i];
+            if (!ASSERT_NODE_ID(nbr) || is_node_pseudocycledon(nbr))
             {
-                (pobject + index_map)->appendix = c + NODES_MAX_ENCIRCLE / 2;
+                continue;
             }
-            else
+            if (!pau_vector_contains(pplug->allocatedNodes, nbr))
             {
-                (pobject + index_map)->contactorid = 0;
-                (pobject + index_map)->direction = 0;
-                (pobject + index_map)->appendix = 0;
-                index_map -= 1;
+                continue;
             }
-            if (-1 == (pobject + index_map)->hops || refer_Node_Extracted((pobject + index_map)->direction)->pseudocycledon)
+            if (get_dist(nbr) != hops - 1)
             {
-                (pobject + index_map)->contactorid = 0;
-                (pobject + index_map)->direction = 0;
-                (pobject + index_map)->appendix = 0;
-                index_map -= 1;
+                continue;
             }
-        }
-
-        index_map += 1;
-        if (0 == --cnt || index_map >= MAXNODES_MEM_LMT)
-        {
+            ID_TYPE secondary = ID_VAIN;
+            ID_TYPE contactorid = resolve_edge_contactors(nodeid, nbr, &secondary);
+            if (!ASSERT_CONTACTOR_ID(contactorid))
+            {
+                continue;
+            }
+            if (index >= MAXNODES_MEM_LMT)
+            {
+                break;
+            }
+            pobject[index].direction = nodeid;
+            pobject[index].contactorid = contactorid;
+            pobject[index].appendix = secondary;
+            pobject[index].hops = (ID_TYPE)hops;
+            pobject[index].genogram = nbr;
+            index++;
             break;
         }
     }
 
-    // 把map中的FlowMap元素按照.hops从小到大排序
-    sort_flowmap_by_hops(pobject, index_map);
+    /* 伪环路节点：hops=100 排到最后，作为备用接入点 */
+    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
+    {
+        if (!is_node_pseudocycledon(nodeid))
+        {
+            continue;
+        }
+        if (index >= MAXNODES_MEM_LMT)
+        {
+            break;
+        }
+        pobject[index].direction = nodeid;
+        pobject[index].contactorid = nodeid + NODES_MAX_ENCIRCLE;
+        pobject[index].appendix = CONTACTOR_MAX - NODES_MAX_ENCIRCLE / 2 + (nodeid > NODES_MAX_ENCIRCLE / 2 ? nodeid - NODES_MAX_ENCIRCLE / 2 : nodeid);
+        pobject[index].hops = 100;
+        struct Alloc_contactorObj *pc = refer_Contactor_Extracted(pobject[index].appendix);
+        pobject[index].genogram = pc->node1;
+        index++;
+    }
 
-    return pobject + index_map;
+    /* 按 hops 从小到大排序 */
+    sort_flowmap_by_hops(pobject, index);
+
+    return pobject + index;
 }
 enum METABOLIN metabole_alethes(unsigned char nodeid, unsigned char relayid, FlowMap *pflow_map)
 {
