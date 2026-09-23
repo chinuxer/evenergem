@@ -2,14 +2,7 @@
 #include "telnetconsole.h"
 #include <QApplication>
 #include <QDebug>
-#include <QMessageBox>
 #include <QDialog>
-#include <QVBoxLayout>
-#include <QTextEdit>
-#include <QDialogButtonBox>
-#include <QFile>
-#include <QTextStream>
-#include <QPushButton>
 #include <QMetaObject>
 #include <QObject>
 #include <QString>
@@ -53,7 +46,7 @@ extern "C" void pau_log_printf(const char *fmt, ...)
 #define ANSI_COLOR_CRITICAL "\033[31m" // 红色
 #define ANSI_COLOR_FATAL "\033[31;1m"  // 红色加粗
 
-void messageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+void messageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
 {
     // 构建带颜色的消息（用于 telnet）
     QString coloredMsg;
@@ -102,51 +95,6 @@ void messageHandler(QtMsgType type, const QMessageLogContext &context, const QSt
 }
 
 // 显示免责声明对话框，返回 true 表示用户接受，false 表示拒绝
-static bool showDisclaimer()
-{
-    // 从资源文件中读取免责文本
-    QFile file(":/disclaimer.txt"); // 冒号+斜杠表示资源系统
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        QMessageBox::critical(nullptr, "启动失败",
-                              "无法加载免责声明资源，程序将退出。");
-        return false;
-    }
-
-    QTextStream stream(&file);
-    stream.setCodec("UTF-8");
-    QString disclaimerText = stream.readAll();
-    file.close();
-
-    // 创建对话框
-    QDialog dialog;
-    dialog.setWindowTitle("免责声明");
-    dialog.setMinimumSize(650, 550);
-
-    QVBoxLayout *layout = new QVBoxLayout(&dialog);
-
-    QTextEdit *textEdit = new QTextEdit();
-    textEdit->setReadOnly(true);
-    textEdit->setPlainText(disclaimerText);
-    textEdit->setStyleSheet(
-        "QTextEdit {"
-        "    background-color: #15232e;"
-        "    color: #b7daeb;"
-        "    font-family: 'Microsoft YaHei', 'SimHei';"
-        "    font-size: 11pt;"
-        "}");
-    layout->addWidget(textEdit);
-
-    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Yes | QDialogButtonBox::No);
-    buttonBox->button(QDialogButtonBox::Yes)->setText("接受");
-    buttonBox->button(QDialogButtonBox::No)->setText("拒绝");
-    layout->addWidget(buttonBox);
-
-    QObject::connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-    return dialog.exec() == QDialog::Accepted;
-}
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);

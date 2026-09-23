@@ -282,13 +282,6 @@ void SimpleTopology::releaseNodeFromPile(int nodeId, int pileId, bool emit_signa
     }
 }
 
-// 添加接触器状态更新方法
-void SimpleTopology::updateContactorStates(int pileId, int nodeId)
-{
-    if (pileId < 1 || pileId > m_piles.size())
-        return;
-}
-
 // 手动操作接口（测试用）
 
 void SimpleTopology::allocateNodes_manu(int nodeId, int pileId)
@@ -332,7 +325,7 @@ QJsonObject SimpleTopology::saveState() const
     return state;
 }
 
-bool SimpleTopology::loadState(const QJsonObject &state)
+bool SimpleTopology::loadState(const QJsonObject &)
 {
 
     return true;

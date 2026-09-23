@@ -120,8 +120,6 @@ private:
 
     // 生成颜色列表
     QVector<QColor> generateColors(int count);
-    // 更新接触器状态
-    void updateContactorStates(int pileId, int nodeId);
 };
 
 #endif // POWERTOPOLOGY_H

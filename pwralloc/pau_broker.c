@@ -606,8 +606,6 @@ int requestpwr_limited_matching(ID_TYPE plugid, int required_power)
     }
     int matched_requestpwr = required_power;
     size_t exclude_modules_cnt = get_system_charging_modules_cnt(plugid);
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    int limited_power = get_system_limited_power();
     size_t limited_modules_cnt = 0;  // GETQUOTA(limited_power);
     size_t required_modules_cnt = 0; // GETQUOTA(required_power);
     if (required_modules_cnt + exclude_modules_cnt > limited_modules_cnt)

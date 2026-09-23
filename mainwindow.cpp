@@ -862,7 +862,6 @@ void MainWindow::setupGraphicsScene()
         }
         for (int i = 0; i < config.nodeCount / 2; i++)
         {
-            const auto &contactor = contactors[i + matrix_contactors_num + 2 * config.nodeCount];
             QGraphicsLineItem *connLine = new QGraphicsLineItem(
                 m_matrixNodeItems[i]->x(), m_matrixNodeItems[i]->y(), m_jointItems[i]->x(), m_jointItems[i]->y());
             QGraphicsLineItem *hitArea = new QGraphicsLineItem(
@@ -915,7 +914,6 @@ void MainWindow::setupGraphicsScene()
         {
             for (int node2 = node1 + 1; node2 <= config.nodeCount / 2 && contactorIdx < matrix_contactors_num; node2++)
             {
-                const auto &contactor = contactors[contactorIdx + 2 * config.nodeCount];
                 QGraphicsLineItem *connLine = new QGraphicsLineItem(m_matrixNodeItems[node1 - 1]->x(), m_matrixNodeItems[node1 - 1]->y(), m_matrixNodeItems[node2 - 1]->x(), m_matrixNodeItems[node1 - 1]->y());
                 QGraphicsLineItem *hitArea = new QGraphicsLineItem(m_matrixNodeItems[node1 - 1]->x(), m_matrixNodeItems[node1 - 1]->y(), m_matrixNodeItems[node2 - 1]->x(), m_matrixNodeItems[node1 - 1]->y());
                 connLine->setPen(QPen(Qt::lightGray, 1, Qt::DotLine));

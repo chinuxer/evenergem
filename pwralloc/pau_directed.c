@@ -36,7 +36,6 @@ struct
     int totalCount;  /* 节点总数 R+H */
     int plugCount;
     int tot; /* 邻接表已用边数（前向星，有向边） */
-    Contactor_Edge candidates[MAX_GRAPH_UNDIRECTED_EDGES];
     int parent[MAXNODES_MEM_LMT + 1];
     size_t rear_canary;
 } *pconfig_graph IN_PAU_RAM_SECTION = NULL;
@@ -312,20 +311,6 @@ void unite(int x, int y)
     pconfig_graph->parent[find(x)] = find(y);
 }
 
-void add_candidate_edge(size_t *candidateCnt, ID_TYPE u, ID_TYPE v, bool isDiagonal)
-{
-    if (*candidateCnt >= MAX_GRAPH_UNDIRECTED_EDGES) // 检查是否超过候选边数组的容量
-    {
-        // Optional: Handle error or log warning if buffer is full
-        return;
-    }
-
-    pconfig_graph->candidates[*candidateCnt].u = u;
-    pconfig_graph->candidates[*candidateCnt].v = v;
-    pconfig_graph->candidates[*candidateCnt].diagonal = isDiagonal;
-    (*candidateCnt)++;
-}
-
 void clear_parent(void)
 {
     memset(pconfig_graph->parent, 0, sizeof(pconfig_graph->parent));
@@ -344,10 +329,6 @@ void set_parent(ID_TYPE node, ID_TYPE parentNode)
     pconfig_graph->parent[node] = parentNode;
 }
 
-Contactor_Edge get_Edge(int index)
-{
-    return pconfig_graph->candidates[index];
-}
 bool graphconfig_Canaries_Twittering(void)
 {
     return (pconfig_graph->front_canary == FRONT_MAGICWORD && pconfig_graph->rear_canary == REAR_MAGICWORD);

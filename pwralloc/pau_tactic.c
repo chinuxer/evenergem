@@ -361,6 +361,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         return 0;
     }
 }
+#if defined(STM32F407xx)
 static bool isHysteresis_Active(float pwr, ID_TYPE plugid, uint32_t *timer)
 {
 #define HYSTERESIS_IMMEDIATE_DEC (5.0f * 1000.0f)
@@ -456,7 +457,6 @@ static float stable_Required_Current(float current, ID_TYPE plug_id)
     pdata->sample_current_pool[pdata->index++ % DEMAND_CURRENT_SAMPLENUM] = current;
     return (var_stablish_threshold == pdata->counter ? last_interpolated : 0.0f);
 }
-#if defined(STM32F407xx)
 void available_power_update(void)
 {
     pau_printf("[PAU] available_power_update:");
