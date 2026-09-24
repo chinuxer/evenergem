@@ -18,6 +18,9 @@
 #define NODE_OP_RELEASE !NODE_OP_DISPENSE
 #define FURTHER true
 #define NEARER !FURTHER
+// 接触器负载累加表容量：线环/对径接触器 2*R + 矩阵接触器（上界按全连接估算）
+#define MAX_CONTACTOR_LOAD_CAPACITY (2 * MAXNODES_MEM_LMT + MAX_GRAPH_UNDIRECTED_EDGES + 2)
+static ID_TYPE diagonal_mirror(ID_TYPE contactorid);
 static ID_TYPE get_neighbor_left(ID_TYPE nodeid)
 {
     nodeid += 1;
@@ -294,6 +297,186 @@ static void close_edge_contactors(ID_TYPE node_alpha, ID_TYPE node_beta)
  *
  * @param pplug 充电桩对象
  */
+static int uf_find(int *uf, int x)
+{
+    int root = x;
+    while (uf[root] != root)
+    {
+        root = uf[root];
+    }
+    while (uf[x] != root)
+    {
+        int next = uf[x];
+        uf[x] = root;
+        x = next;
+    }
+    return root;
+}
+static void uf_unite(int *uf, int x, int y)
+{
+    uf[uf_find(uf, x)] = uf_find(uf, y);
+}
+
+/*
+ * 纯函数：为给定节点集合构建无环生成树，输出每个节点的父节点。
+ * 与 acyclic_tree_building 使用完全相同的选边规则（距离和升序、环形边优先、并查集防环），
+ * 只是不修改任何接触器状态，供负载估算复用。
+ *
+ * @param nodeset 参与建树的节点集合（已分配节点）
+ * @param root    生成树根节点（直连节点）
+ * @param parent  输出：parent[node] = 父节点；根为自身；不可达/伪环路为 ID_VAIN
+ * @return true 建树成功
+ */
+static bool build_spanning_tree(PAU_Vector *nodeset, ID_TYPE root, ID_TYPE *parent)
+{
+    if (NULL == nodeset || NULL == parent || 0 == pau_vector_size(nodeset))
+    {
+        return false;
+    }
+    for (int i = 0; i <= MAXNODES_MEM_LMT; i++)
+    {
+        parent[i] = ID_VAIN;
+    }
+    parent[root] = root;
+
+    /* ── 1. 以根做 BFS，得到距离层级 ── */
+    int dist[MAXNODES_MEM_LMT + 1];
+    memset(dist, -1, sizeof(dist));
+    ID_TYPE queue[MAXNODES_MEM_LMT];
+    int qh = 0, qt = 0;
+    dist[root] = 0;
+    queue[qt++] = root;
+
+    while (qh < qt)
+    {
+        ID_TYPE u = queue[qh++];
+        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
+        get_neighbors(u, neighbors);
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
+        {
+            ID_TYPE v = neighbors[i];
+            if (!ASSERT_NODE_ID(v))
+            {
+                continue;
+            }
+            if (!pau_vector_contains(nodeset, v))
+            {
+                continue;
+            }
+            if (refer_Node_Extracted(v)->pseudocycledon)
+            {
+                continue;
+            }
+            if (dist[v] == -1)
+            {
+                dist[v] = dist[u] + 1;
+                queue[qt++] = v;
+            }
+        }
+    }
+
+    /* ── 2. 并查集初始化（局部数组，不改全局） ── */
+    int uf[MAXNODES_MEM_LMT + 1];
+    for (int i = 0; i <= MAXNODES_MEM_LMT; i++)
+    {
+        uf[i] = i;
+    }
+
+    /* ── 3. 收集候选边 ── */
+    typedef struct
+    {
+        ID_TYPE u;     /* 较远节点 */
+        ID_TYPE v;     /* 较近节点（候选父） */
+        bool diagonal; /* 是否对角线/矩阵边 */
+        int distSum;   /* dist[u] + dist[v]，越小越靠近根 */
+    } CandidateEdge;
+
+    CandidateEdge candidates[MAX_GRAPH_UNDIRECTED_EDGES];
+    int candidateCnt = 0;
+
+    PAU_VECTOR_FOREACH(node, nodeset)
+    {
+        if (refer_Node_Extracted(node)->pseudocycledon || dist[node] < 0)
+        {
+            continue;
+        }
+        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
+        get_neighbors(node, neighbors);
+        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
+        {
+            ID_TYPE nbr = neighbors[i];
+            if (!ASSERT_NODE_ID(nbr) || refer_Node_Extracted(nbr)->pseudocycledon || dist[nbr] < 0)
+            {
+                continue;
+            }
+            if (!pau_vector_contains(nodeset, nbr))
+            {
+                continue;
+            }
+            if (node >= nbr)
+            {
+                continue;
+            }
+            CandidateEdge e;
+            if (dist[node] >= dist[nbr])
+            {
+                e.u = node;
+                e.v = nbr;
+            }
+            else
+            {
+                e.u = nbr;
+                e.v = node;
+            }
+            e.diagonal = (i >= 2);
+            e.distSum = dist[e.u] + dist[e.v];
+            candidates[candidateCnt++] = e;
+        }
+    }
+
+    /* ── 4. 按 distSum 升序排序，同距离环形优先 ── */
+    for (int i = 0; i < candidateCnt - 1; i++)
+    {
+        int minIdx = i;
+        for (int j = i + 1; j < candidateCnt; j++)
+        {
+            bool swap = false;
+            if (candidates[j].distSum < candidates[minIdx].distSum)
+            {
+                swap = true;
+            }
+            else if (candidates[j].distSum == candidates[minIdx].distSum &&
+                     !candidates[j].diagonal && candidates[minIdx].diagonal)
+            {
+                swap = true;
+            }
+            if (swap)
+            {
+                minIdx = j;
+            }
+        }
+        if (minIdx != i)
+        {
+            CandidateEdge tmp = candidates[i];
+            candidates[i] = candidates[minIdx];
+            candidates[minIdx] = tmp;
+        }
+    }
+
+    /* ── 5. 逐边选入（并查集防环），记录父指针 ── */
+    for (int i = 0; i < candidateCnt; i++)
+    {
+        CandidateEdge e = candidates[i];
+        if (uf_find(uf, e.u) == uf_find(uf, e.v))
+        {
+            continue;
+        }
+        parent[e.u] = e.v;
+        uf_unite(uf, e.u, e.v);
+    }
+    return true;
+}
+
 static void
 acyclic_tree_building(struct Alloc_plugObj *pplug)
 {
@@ -312,188 +495,203 @@ acyclic_tree_building(struct Alloc_plugObj *pplug)
         }
     }
 
-    /* ── 1. 以直连节点为根做 BFS，得到距离层级 ── */
     ID_TYPE root = pplug->connectedNode;
     if (!ASSERT_NODE_ID_ENCIRCLE(root))
     {
         return;
     }
 
-    /* 距离表：仅对已分配节点有效 */
-    int dist[MAXNODES_MEM_LMT + 1];
-    memset(dist, -1, sizeof(dist));
-
-    /* 手写队列 */
-    ID_TYPE queue[MAXNODES_MEM_LMT];
-    int qh = 0, qt = 0;
-
-    dist[root] = 0;
-    queue[qt++] = root;
-
-    while (qh < qt)
+    /* ── 1. 计算生成树，再按父指针闭合接触器 ── */
+    ID_TYPE parent[MAXNODES_MEM_LMT + 1];
+    if (!build_spanning_tree(pplug->allocatedNodes, root, parent))
     {
-        ID_TYPE u = queue[qh++];
-        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
-        get_neighbors(u, neighbors);
-        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
-        {
-            ID_TYPE v = neighbors[i];
-            if (!ASSERT_NODE_ID(v))
-            {
-                continue;
-            }
-            if (!pau_vector_contains(pplug->allocatedNodes, v))
-            {
-                continue;
-            }
-            if (refer_Node_Extracted(v)->pseudocycledon)
-            {
-                continue;
-            }
-            if (dist[v] == -1)
-            {
-                dist[v] = dist[u] + 1;
-                queue[qt++] = v;
-            }
-        }
+        return;
     }
-
-    /* ── 2. 并查集初始化（仅对已分配的非伪环路节点） ── */
-    clear_parent();
     PAU_VECTOR_FOREACH(node, pplug->allocatedNodes)
     {
-        if (refer_Node_Extracted(node)->pseudocycledon)
+        if (node == root || refer_Node_Extracted(node)->pseudocycledon)
         {
             continue;
         }
-        set_parent(node, node);
-    }
-
-    /* ── 3. 记录每个节点的子节点数，用于均衡分支 ── */
-    int childCount[MAXNODES_MEM_LMT + 1];
-    memset(childCount, 0, sizeof(childCount));
-
-    /* ── 4. 收集候选边，并按 (距离和, 是否环形, 父节点子节点数) 排序 ── */
-    typedef struct
-    {
-        ID_TYPE u;     /* 较远节点 */
-        ID_TYPE v;     /* 较近节点（候选父） */
-        bool diagonal; /* 是否对角线/矩阵边 */
-        int distSum;   /* dist[u] + dist[v]，越小越靠近根 */
-        int childLoad; /* childCount[v]，越小分支越均衡 */
-    } CandidateEdge;
-
-    CandidateEdge candidates[MAX_GRAPH_UNDIRECTED_EDGES];
-    int candidateCnt = 0;
-
-    PAU_VECTOR_FOREACH(node, pplug->allocatedNodes)
-    {
-        if (refer_Node_Extracted(node)->pseudocycledon)
+        ID_TYPE p = parent[node];
+        if (!ASSERT_NODE_ID(p) || p == node)
         {
             continue;
         }
-        if (dist[node] < 0)
-        {
-            continue; /* 不在 BFS 可达范围内 */
-        }
-
-        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
-        get_neighbors(node, neighbors);
-        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
-        {
-            ID_TYPE nbr = neighbors[i];
-            if (!ASSERT_NODE_ID(nbr))
-            {
-                continue;
-            }
-            if (!pau_vector_contains(pplug->allocatedNodes, nbr))
-            {
-                continue;
-            }
-            if (refer_Node_Extracted(nbr)->pseudocycledon)
-            {
-                continue;
-            }
-            if (dist[nbr] < 0)
-            {
-                continue;
-            }
-            /* 避免重复添加同一条边（node < nbr 时添加） */
-            if (node >= nbr)
-            {
-                continue;
-            }
-
-            CandidateEdge e;
-            /* 让 u 为较远节点，v 为较近节点（候选父） */
-            if (dist[node] >= dist[nbr])
-            {
-                e.u = node;
-                e.v = nbr;
-            }
-            else
-            {
-                e.u = nbr;
-                e.v = node;
-            }
-            /* get_neighbors 前两个是线环/下端相邻边，其余为对径或矩阵边 */
-            e.diagonal = (i >= 2);
-            e.distSum = dist[e.u] + dist[e.v];
-            e.childLoad = 0; /* 排序后再根据实时 childCount 决定，这里先填0 */
-            candidates[candidateCnt++] = e;
-        }
-    }
-
-    /* ── 5. 按 distSum 升序排序（越靠近根越优先），同距离环形优先 ── */
-    for (int i = 0; i < candidateCnt - 1; i++)
-    {
-        int minIdx = i;
-        for (int j = i + 1; j < candidateCnt; j++)
-        {
-            bool swap = false;
-            if (candidates[j].distSum < candidates[minIdx].distSum)
-            {
-                swap = true;
-            }
-            else if (candidates[j].distSum == candidates[minIdx].distSum)
-            {
-                /* 环形优先于对角线/矩阵边 */
-                if (!candidates[j].diagonal && candidates[minIdx].diagonal)
-                {
-                    swap = true;
-                }
-            }
-            if (swap)
-            {
-                minIdx = j;
-            }
-        }
-        if (minIdx != i)
-        {
-            CandidateEdge tmp = candidates[i];
-            candidates[i] = candidates[minIdx];
-            candidates[minIdx] = tmp;
-        }
-    }
-
-    /* ── 6. 逐边闭合，使用并查集避免环 ── */
-    for (int i = 0; i < candidateCnt; i++)
-    {
-        CandidateEdge e = candidates[i];
-
-        /* 已连通则跳过（避免成环） */
-        if (find(e.u) == find(e.v))
-        {
-            continue;
-        }
-
-        /* 闭合接触器（矩阵-线环边会同时闭合 4XX 与其对径分段） */
-        close_edge_contactors(e.u, e.v);
-
-        unite(e.u, e.v);
-        childCount[e.v]++; /* 记录父节点子节点数，供后续均衡使用 */
+        close_edge_contactors(node, p);
     }
 }
+
+/*
+ * 把充电桩（可选试分配 candidate）的功率潮流累加到 loads[] 与 direct_loads[] 上。
+ * 每个节点的电流沿其父链加到途经的每个接触器上；直连接触器累加该桩全部节点电流。
+ * 纯累加，不修改接触器状态。
+ */
+static void accumulate_plug_loads(ID_TYPE plugid, ID_TYPE candidate, size_t *loads, size_t *direct_loads)
+{
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    if (!ASSERT_NODE_ID_ENCIRCLE(pplug->connectedNode))
+    {
+        return;
+    }
+
+    PAU_Vector *nodeset = pau_vector_clone(pplug->allocatedNodes);
+    if (NULL == nodeset)
+    {
+        return;
+    }
+    if (ID_VAIN != candidate && !pau_vector_contains(nodeset, candidate))
+    {
+        pau_vector_append(nodeset, candidate);
+    }
+
+    ID_TYPE parent[MAXNODES_MEM_LMT + 1];
+    if (!build_spanning_tree(nodeset, pplug->connectedNode, parent))
+    {
+        pau_vector_destroy(nodeset);
+        return;
+    }
+
+    PAU_VECTOR_FOREACH(node, nodeset)
+    {
+        if (refer_Node_Extracted(node)->pseudocycledon)
+        {
+            continue;
+        }
+        size_t cur = node_current_amps(node);
+        direct_loads[plugid] += cur;
+
+        ID_TYPE walk = node;
+        int guard = 0;
+        while (walk != pplug->connectedNode && guard++ < MAXNODES_MEM_LMT)
+        {
+            ID_TYPE p = parent[walk];
+            if (!ASSERT_NODE_ID(p) || p == walk)
+            {
+                break;
+            }
+            ID_TYPE appendix = ID_VAIN;
+            struct Alloc_contactorObj *pc = find_contactor_bynode(walk, p, &appendix);
+            if (NULL != pc && pc->id < MAX_CONTACTOR_LOAD_CAPACITY)
+            {
+                loads[pc->id] += cur;
+            }
+            if (ASSERT_CONTACTOR_ID(appendix) && appendix < MAX_CONTACTOR_LOAD_CAPACITY)
+            {
+                loads[appendix] += cur;
+            }
+            else if (NULL != pc && pc->id > NODES_MAX_ENCIRCLE && pc->id <= 2 * NODES_MAX_ENCIRCLE)
+            {
+                ID_TYPE mirror = diagonal_mirror(pc->id);
+                if (mirror < MAX_CONTACTOR_LOAD_CAPACITY)
+                {
+                    loads[mirror] += cur;
+                }
+            }
+            walk = p;
+        }
+    }
+
+    pau_vector_destroy(nodeset);
+}
+
+/*
+ * 生成接触器的统一编号（如 101、205、301、412），类型前缀 + 类型内序号。
+ * out 缓冲区建议不小于 16 字节。
+ */
+static void contactor_display_id(ID_TYPE contactorid, char *out, size_t out_size)
+{
+    CONTACTOR_TYPE type = contactor_type(contactorid);
+    ID_TYPE base = 0;
+    switch (type)
+    {
+    case CONTACTOR_RING:
+        base = 0;
+        break;
+    case CONTACTOR_DIAGONAL:
+        base = NODES_MAX_ENCIRCLE;
+        break;
+    case CONTACTOR_MATRIX:
+        base = 2 * NODES_MAX_ENCIRCLE;
+        break;
+    case CONTACTOR_MATRIX_RING:
+        base = 2 * NODES_MAX_ENCIRCLE + (NODES_MAX_ENCIRCLE / 2) * (NODES_MAX_ENCIRCLE / 2 - 1) / 2;
+        break;
+    default:
+        break;
+    }
+    sprintf(out, "%d%02u", (int)type, (unsigned)(contactorid - base));
+    (void)out_size;
+}
+
+/*
+ * @brief 全局超限检测：汇总所有在充充电桩（含试分配）的功率潮流负载，检查是否有接触器超限。
+ *
+ * 依据 feat.txt 的接触器带载约束，从全局视角统计每个接触器承载的电流（多桩共享的
+ * 矩阵接触器会跨桩叠加），再与对应类型限流值比较。
+ *
+ * @param candidate_plug 被分配的充电桩
+ * @param candidate_node 试分配节点（ID_VAIN 表示不试分配，仅校验现状）
+ * @return true 存在超限（并醒目打印），该候选应被舍弃；false 无超限
+ */
+static bool global_contactor_overload(ID_TYPE candidate_plug, ID_TYPE candidate_node)
+{
+    static size_t loads[MAX_CONTACTOR_LOAD_CAPACITY];
+    static size_t direct_loads[MAXNODES_MEM_LMT + 1];
+    memset(loads, 0, sizeof(loads));
+    memset(direct_loads, 0, sizeof(direct_loads));
+
+    for (ID_TYPE plugid = 1; plugid <= PLUG_MAX; plugid++)
+    {
+        struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+        if (PLUG_CHARGING != pplug->state)
+        {
+            continue;
+        }
+        ID_TYPE cand = (plugid == candidate_plug) ? candidate_node : ID_VAIN;
+        accumulate_plug_loads(plugid, cand, loads, direct_loads);
+    }
+
+    /* 逐个接触器比较限流（多桩共享接触器的电流已跨桩叠加） */
+    for (ID_TYPE c = 1; c <= CONTACTOR_MAX; c++)
+    {
+        size_t limit = get_contactor_type_limit(contactor_type(c));
+        if (0 != limit && loads[c] > limit)
+        {
+            char cid[16];
+            char msg[128];
+            contactor_display_id(c, cid, sizeof(cid));
+            sprintf(msg, "节点%u（接触器%s）当前负载%uA超过接触器限流值%uA",
+                    (unsigned)candidate_node, cid, (unsigned)loads[c], (unsigned)limit);
+            pau_ui_log(msg);
+            pau_printf("[PAU] !!! CONTACTOR OVERLOAD: plug%u + node%u -> contactor %s carries %uA > limit %uA, node REJECTED !!!\r\n",
+                       (unsigned)candidate_plug, (unsigned)candidate_node, cid, (unsigned)loads[c], (unsigned)limit);
+            return true;
+        }
+    }
+
+    /* 直连接触器（虚拟，每桩承载自身总电流） */
+    size_t direct_limit = get_contactor_type_limit(CONTACTOR_DIRECT);
+    if (0 != direct_limit)
+    {
+        for (ID_TYPE plugid = 1; plugid <= PLUG_MAX; plugid++)
+        {
+            if (direct_loads[plugid] > direct_limit)
+            {
+                char msg[128];
+                sprintf(msg, "节点%u（接触器0%02u）当前负载%uA超过接触器限流值%uA",
+                        (unsigned)candidate_node, (unsigned)plugid, (unsigned)direct_loads[plugid], (unsigned)direct_limit);
+                pau_ui_log(msg);
+                pau_printf("[PAU] !!! CONTACTOR OVERLOAD: plug%u + node%u -> plug%u DIRECT contactor carries %uA > limit %uA, node REJECTED !!!\r\n",
+                           (unsigned)candidate_plug, (unsigned)candidate_node, (unsigned)plugid, (unsigned)direct_loads[plugid], (unsigned)direct_limit);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 void updateContactorStates(ID_TYPE plugid, ID_TYPE nodeid)
 {
     if (!ASSERT_PLUG_ID(plugid))
@@ -846,6 +1044,11 @@ static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t qu
         int score = (int)pau_vector_at(scorelist, index_reordered);
         if (score > bestScore && score > WEIGHT_5)
         {
+            // 接触器带载约束：若选入该节点会使潮流路径超限，则舍弃并尝试下一个候选
+            if (global_contactor_overload(plugid, index_reordered))
+            {
+                continue;
+            }
             bestScore = score;
             optimal_index = index_reordered;
         }
@@ -1357,8 +1560,14 @@ static bool matrix_node_avatar(ID_TYPE plugid)
         int score = pau_vector_at(scorelist, n);
         if (score > bestScore)
         {
+            ID_TYPE candidate = n + NODES_MAX_ENCIRCLE;
+            // 接触器带载约束：超限则舍弃该候选
+            if (global_contactor_overload(plugid, candidate))
+            {
+                continue;
+            }
             bestScore = score;
-            bestNode = n + NODES_MAX_ENCIRCLE;
+            bestNode = candidate;
         }
     }
     if (bestScore > WEIGHT_6)

@@ -126,6 +126,17 @@ void pau_log_printf(const char *fmt, ...);
         ID_TYPE node2; // 连接的节点2
         bool isClosed; // 是否闭合
     };
+
+    // 接触器类型（按编号段区分，与设置界面的 0XX/1XX/2XX/3XX/4XX 对应）
+    typedef enum
+    {
+        CONTACTOR_DIRECT = 0,  // 0XX 充电桩直连（虚拟接触器）
+        CONTACTOR_RING,        // 1XX 线环相邻节点之间
+        CONTACTOR_DIAGONAL,    // 2XX 线环对径节点之间
+        CONTACTOR_MATRIX,      // 3XX 矩阵节点之间
+        CONTACTOR_MATRIX_RING, // 4XX 矩阵节点与线环节点之间
+        CONTACTOR_TYPE_COUNT
+    } CONTACTOR_TYPE;
     struct Tactic_ReqCurrentObj
     {
 #define DEMAND_CURRENT_SAMPLENUM 6
@@ -199,6 +210,7 @@ VARIABLE_LIST_PENDING_EXPANDED
 #define ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX (NODES_MAX_ENCIRCLE != NODE_MAX)
 #define ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX (NODES_MAX_ENCIRCLE == NODE_MAX)
 #define CONTACTOR_SPLICE_MULTIPLE 100
+#define NODE_AMPS_PER_MODULE 100 // 单个功率模块折算的额定电流 (A)
 #define ASSERT_NODE_ID(id) ((id) <= NODE_MAX && (id) > ID_VAIN)
 #define ASSERT_NODE_ID_ENCIRCLE(id) ((id) <= NODES_MAX_ENCIRCLE && (id) > ID_VAIN)
 #define ASSERT_PLUG_ID(id) ((id) <= PLUG_MAX && (id) > ID_VAIN)
@@ -324,6 +336,13 @@ struct Alloc_contactorObj *refer_Contactor_Extracted(ID_TYPE contactor);
 struct Tactic_ReqCurrentObj *refer_ReqSettler_Extracted(ID_TYPE plug);
 #endif // __IMPORT_PAU_DBFUNC__
     void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes);
+    CONTACTOR_TYPE contactor_type(ID_TYPE contactorid);
+    size_t node_current_amps(ID_TYPE nodeid);
+    void set_contactor_type_limit(CONTACTOR_TYPE type, size_t amps);
+    size_t get_contactor_type_limit(CONTACTOR_TYPE type);
+    // UI 日志回传：由 UI 层注册回调，把底层业务日志（如接触器超限）推送到界面操作日志
+    void pau_set_ui_log_sink(void (*sink)(const char *msg));
+    void pau_ui_log(const char *msg);
 #ifdef __cplusplus
 }
 #endif // __cplusplus

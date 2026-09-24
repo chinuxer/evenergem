@@ -40,6 +40,16 @@
 #include <cstddef>
 #include "pau_feeder.h"
 
+// 底层 pau_ui_log 回传：把业务日志（如接触器超限）推送到右侧操作日志
+static MainWindow *g_mainWindow = nullptr;
+static void uiLogSink(const char *msg)
+{
+    if (g_mainWindow)
+    {
+        g_mainWindow->appendOperationLog(QString::fromUtf8(msg));
+    }
+}
+
 static QColor makeDisabledColor(const QColor &base)
 {
     QColor hsl = base.toHsl();
@@ -57,6 +67,10 @@ size_t factorial(ID_TYPE n)
         res += i;
     }
     return res;
+}
+void MainWindow::appendOperationLog(const QString &msg)
+{
+    ui->logTextEdit->append(msg);
 }
 double MainWindow::getYFromLineItemX(int nodeIndex, int nodescnt, double x, double meros)
 {
@@ -137,6 +151,9 @@ MainWindow::MainWindow(TOPOTYPE topologyType, QWidget *parent)
       m_scene(new QGraphicsScene(this)), m_selectedNode(-1), m_selectedPile(-1)
 {
     ui->setupUi(this);
+
+    g_mainWindow = this;
+    pau_set_ui_log_sink(uiLogSink);
 
     QGroupBox *modeGroup = new QGroupBox("控制模式", this);
     modeGroup->setStyleSheet(
@@ -2331,6 +2348,7 @@ void MainWindow::showContactorLoadDialog()
         QLabel *label;
         QString name;
         int defaultValue;
+        CONTACTOR_TYPE type;
     };
     QVector<ContactorSetting> settings;
 
@@ -2360,6 +2378,7 @@ void MainWindow::showContactorLoadDialog()
     directSetting.label = directLabel;
     directSetting.name = "直连接触器";
     directSetting.defaultValue = 2000;
+    directSetting.type = CONTACTOR_DIRECT;
     settings.append(directSetting);
 
     // ========== 2. 环形接触器设置（环形和半矩阵有） ==========
@@ -2390,6 +2409,7 @@ void MainWindow::showContactorLoadDialog()
         ringSetting.label = ringLabel;
         ringSetting.name = "环形接触器";
         ringSetting.defaultValue = 200;
+        ringSetting.type = CONTACTOR_RING;
         settings.append(ringSetting);
     }
 
@@ -2421,6 +2441,7 @@ void MainWindow::showContactorLoadDialog()
         diagSetting.label = diagLabel;
         diagSetting.name = "对径接触器";
         diagSetting.defaultValue = 200;
+        diagSetting.type = CONTACTOR_DIAGONAL;
         settings.append(diagSetting);
     }
 
@@ -2453,6 +2474,7 @@ void MainWindow::showContactorLoadDialog()
         matrixSetting.label = matrixLabel;
         matrixSetting.name = "矩阵接触器";
         matrixSetting.defaultValue = 150;
+        matrixSetting.type = CONTACTOR_MATRIX;
         settings.append(matrixSetting);
     }
 
@@ -2485,6 +2507,7 @@ void MainWindow::showContactorLoadDialog()
         matrixRingSetting.label = matrixRingLabel;
         matrixRingSetting.name = "矩阵-环形连接接触器";
         matrixRingSetting.defaultValue = 100;
+        matrixRingSetting.type = CONTACTOR_MATRIX_RING;
         settings.append(matrixRingSetting);
     }
     // 添加弹性空间
@@ -2517,21 +2540,9 @@ void MainWindow::showContactorLoadDialog()
         for (const auto &setting : settings) {
             int value = setting.spinBox->value();
             logMessages << QString("%1限流设置为 %2 A").arg(setting.name).arg(value);
-            
-            // ========== 调用底层接口设置接触器限流 ==========
-            // 这里根据实际需要调用相应的API
-            // 例如：
-            // if (setting.name == "直连接触器") {
-            //     set_contactor_limit(CONTACTOR_TYPE_DIRECT, value);
-            // } else if (setting.name == "环形接触器") {
-            //     set_contactor_limit(CONTACTOR_TYPE_RING, value);
-            // } else if (setting.name == "对径接触器") {
-            //     set_contactor_limit(CONTACTOR_TYPE_DIAGONAL, value);
-            // } else if (setting.name == "矩阵-环形连接接触器") {
-            //     set_contactor_limit(CONTACTOR_TYPE_MATRIX_RING, value);
-            // } else if (setting.name == "矩阵接触器") {
-            //     set_contactor_limit(CONTACTOR_TYPE_MATRIX, value);
-            // }
+
+            // 调用底层接口设置该类接触器限流（0 表示不限流）
+            ::set_contactor_type_limit(setting.type, (size_t)value);
         }
         
         // 记录日志

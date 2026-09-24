@@ -39,6 +39,7 @@ public:
     bool isPowerLimitActive() const { return m_powerLimitActive; }
     int getPowerLimitValue() const { return m_powerLimitValue; }
     double getStaticTotalSystemPower() const { return m_totalpower; }
+    void appendOperationLog(const QString &msg);
 private slots:
     void onApplyConfigClicked();
     void onRequestPowerClicked();

@@ -37,6 +37,58 @@ int oprt_ratedpwr_per_module(int rated_pwr)
 
     return g_rated_pwr_per_module;
 }
+// 每类接触器的带载电流上限 (A)，0 表示不限流
+static size_t g_contactor_limit_amps[CONTACTOR_TYPE_COUNT] IN_PAU_RAM_SECTION = {0};
+void set_contactor_type_limit(CONTACTOR_TYPE type, size_t amps)
+{
+    if (type < CONTACTOR_TYPE_COUNT)
+    {
+        g_contactor_limit_amps[type] = amps;
+    }
+}
+size_t get_contactor_type_limit(CONTACTOR_TYPE type)
+{
+    return (type < CONTACTOR_TYPE_COUNT) ? g_contactor_limit_amps[type] : 0;
+}
+CONTACTOR_TYPE contactor_type(ID_TYPE contactorid)
+{
+    if (!ASSERT_CONTACTOR_ID(contactorid))
+    {
+        return CONTACTOR_TYPE_COUNT;
+    }
+    if (contactorid <= NODES_MAX_ENCIRCLE)
+    {
+        return CONTACTOR_RING; // 1XX 线环相邻
+    }
+    if (contactorid <= 2 * NODES_MAX_ENCIRCLE)
+    {
+        return CONTACTOR_DIAGONAL; // 2XX 线环对径
+    }
+    // 半矩阵段：node2 超过拼接基数的是 4XX（矩阵-线环），否则 3XX（矩阵-矩阵）
+    return (refer_Contactor_Extracted(contactorid)->node2 <= CONTACTOR_SPLICE_MULTIPLE)
+               ? CONTACTOR_MATRIX
+               : CONTACTOR_MATRIX_RING;
+}
+size_t node_current_amps(ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid) || 0 == UNITPWR_MAX)
+    {
+        return 0;
+    }
+    return refer_Node_Extracted(nodeid)->power_available * NODE_AMPS_PER_MODULE / UNITPWR_MAX;
+}
+static void (*g_ui_log_sink)(const char *msg) = NULL;
+void pau_set_ui_log_sink(void (*sink)(const char *msg))
+{
+    g_ui_log_sink = sink;
+}
+void pau_ui_log(const char *msg)
+{
+    if (NULL != g_ui_log_sink)
+    {
+        g_ui_log_sink(msg);
+    }
+}
 static void availablePwr_Init(struct Alloc_nodeObj *pnode, int rated_pwr)
 {
 #if defined(STM32F407xx)
