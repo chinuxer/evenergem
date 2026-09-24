@@ -3,7 +3,7 @@
 !*.c
 !*.cpp
 !*.sh
-!*.txt
+!*.qrc
 !*.ui
 !*.pro
 !*.bat

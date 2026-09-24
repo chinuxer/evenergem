@@ -838,13 +838,16 @@ static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t qu
 
     // 找到得分最高并且大于及格线的点（线环 + 半矩阵节点统一比较）
     int bestScore = -1;
-    for (int nodeid = 1; nodeid <= (int)NODE_MAX; ++nodeid)
+    for (int nodeid = 0; nodeid < (int)NODE_MAX; ++nodeid)
     {
-        int score = (int)pau_vector_at(scorelist, nodeid);
+        // 等积分优先级:顺序>逆序>对角>环外
+        int index_reordered = startid + NODES_MAX_ENCIRCLE + ((nodeid + 1) / 2) * ((nodeid + 1) % 2 > 0 ? -1 : 1);
+        index_reordered = (index_reordered - 1) % NODES_MAX_ENCIRCLE + 1;
+        int score = (int)pau_vector_at(scorelist, index_reordered);
         if (score > bestScore && score > WEIGHT_5)
         {
             bestScore = score;
-            optimal_index = nodeid;
+            optimal_index = index_reordered;
         }
     }
     if (optimal_index != ID_VAIN)
@@ -1044,19 +1047,14 @@ static bool node_common_operate(ID_TYPE plugid, bool opType)
         {
             continue;
         }
-        if (opType == NODE_OP_DISPENSE)
-        {
-            func(optimal_node, plugid);
-        }
+        // 分配与释放统一先执行节点操作，再结算 quota，
+        // 避免“quota 恰好扣到 0 时节点未被真正释放”的缺陷
+        func(optimal_node, plugid);
         pau_printf("%s nodeid:%d plugid:%d\r\n", __FUNCTION__, optimal_node, plugid);
         quota -= poptimal_node->power_available;
         if (quota <= 0)
         {
             break;
-        }
-        if (opType != NODE_OP_DISPENSE)
-        {
-            func(optimal_node, plugid);
         }
         cnt++;
     }
@@ -1571,9 +1569,13 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
     int reserve = get_plug_allocated_cnt(plugid);
     while (0 > pplug->shortage)
     {
-        res = have_plug_occupied_matrixnode(plugid);
-        bool (*func)(ID_TYPE, bool) = res ? node_extra_operate : node_common_operate;
-        res = func(plugid, NODE_OP_RELEASE);
+        // 按“距离直连节点最远优先”释放节点（线环 + 半矩阵统一比较），
+        // 距离判据失效时才回退到矩阵节点专用释放逻辑
+        res = node_common_operate(plugid, NODE_OP_RELEASE);
+        if (!res)
+        {
+            res = node_extra_operate(plugid, NODE_OP_RELEASE);
+        }
 
         if (!res)
         {
