@@ -287,8 +287,12 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
                 occupied_count_neighbors++;
             }
         }
-        score = WEIGHT_1 * (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1 - hops);
-        score += WEIGHT_3 * (occupied_count_neighbors < 3 ? (3 - occupied_count_neighbors) : 0);
+        // 优先级：与已占节点相邻 > 模块功率贴合缺额(W4) > 离直连节点更近(W3/级) > 邻近被其他桩占用更少(W1)
+        // 直连节点/镜像直连节点自身没有已占邻居(hops<0)，但它是 0 级，需按 0 级计距离分；
+        // 其余 hops<0 表示与本桩不直接相邻，不给距离分，避免其越过及格线被选中
+        int level = (hops < 0 && 0 == get_dist(nodeid)) ? 0 : hops;
+        score = WEIGHT_3 * (level < 0 ? 0 : (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1 - level));
+        score += WEIGHT_1 * (occupied_count_neighbors < 3 ? (3 - occupied_count_neighbors) : 0);
         score += WEIGHT_4 * (module_adaptive);
         score += WEIGHT_5 * (hops != -1 ? 1 : 0);
         score += WEIGHT_5 * (nodeid == get_plug_connectednode(plugid) && 0 == get_dist(nodeid) ? 1 : 0);

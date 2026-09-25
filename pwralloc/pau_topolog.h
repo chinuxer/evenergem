@@ -35,6 +35,8 @@ void set_locked(ID_TYPE plugid, ID_TYPE nodeid);
 int get_locked(ID_TYPE nodeid);
 void dual_endings_bfs_shell(ID_TYPE start, ID_TYPE plugid, bool find_type);
 void get_neighbors(ID_TYPE nodeid, ID_TYPE *neighbors);
+// 返回线环节点对应的对径分段接触器编号（双结构左右半图分别成组）
+ID_TYPE diagonal_contactor_of_ring_node(ID_TYPE ring_node);
 void clear_parent(void);
 void set_parent(ID_TYPE node, ID_TYPE parentNode);
 bool graphconfig_Canaries_Twittering(void);

@@ -39,6 +39,8 @@ int oprt_ratedpwr_per_module(int rated_pwr)
 }
 // 每类接触器的带载电流上限 (A)，0 表示不限流
 static size_t g_contactor_limit_amps[CONTACTOR_TYPE_COUNT] IN_PAU_RAM_SECTION = {0};
+// 数组初始化阶段暂存的拓扑类型（TOPOLOGY_TYPE 尚未就绪时使用）
+static TOPOTYPE g_building_topology = FullMatrix;
 void set_contactor_type_limit(CONTACTOR_TYPE type, size_t amps)
 {
     if (type < CONTACTOR_TYPE_COUNT)
@@ -55,6 +57,34 @@ CONTACTOR_TYPE contactor_type(ID_TYPE contactorid)
     if (!ASSERT_CONTACTOR_ID(contactorid))
     {
         return CONTACTOR_TYPE_COUNT;
+    }
+    if (ASSERT_TOPOTYPE_DUAL_SEMIMATRIX)
+    {
+        if (contactorid < dual_contactor_group_base(1))
+        {
+            return CONTACTOR_RING; // 左线环
+        }
+        if (contactorid < dual_contactor_group_base(2))
+        {
+            return CONTACTOR_DIAGONAL; // 左对径
+        }
+        if (contactorid < dual_contactor_group_base(4))
+        {
+            return (refer_Contactor_Extracted(contactorid)->node2 <= CONTACTOR_SPLICE_MULTIPLE)
+                       ? CONTACTOR_MATRIX
+                       : CONTACTOR_MATRIX_RING; // 左矩阵
+        }
+        if (contactorid < dual_contactor_group_base(5))
+        {
+            return CONTACTOR_RING; // 右线环
+        }
+        if (contactorid < dual_contactor_group_base(6))
+        {
+            return CONTACTOR_DIAGONAL; // 右对径
+        }
+        return (refer_Contactor_Extracted(contactorid)->node2 <= CONTACTOR_SPLICE_MULTIPLE)
+                   ? CONTACTOR_MATRIX
+                   : CONTACTOR_MATRIX_RING; // 右矩阵
     }
     if (contactorid <= NODES_MAX_ENCIRCLE)
     {
@@ -88,6 +118,27 @@ void pau_ui_log(const char *msg)
     {
         g_ui_log_sink(msg);
     }
+}
+ID_TYPE get_plug_twin_node(ID_TYPE plugid)
+{
+    if (!ASSERT_TOPOTYPE_DUAL_SEMIMATRIX || !ASSERT_PLUG_ID(plugid))
+    {
+        return ID_VAIN;
+    }
+    return refer_Plug_Extracted(plugid)->connectedNode + DUAL_SIDE_SIZE;
+}
+ID_TYPE dual_contactor_group_base(int group)
+{
+    ID_TYPE R = NODE_MAX / 3;    /* 单侧线环节点数 */
+    ID_TYPE H = R / 2;           /* 单侧矩阵节点数 */
+    ID_TYPE M = H * (H - 1) / 2; /* 单侧矩阵-矩阵接触器数 */
+    ID_TYPE counts[8] = {R, R, M, H, R, R, M, H};
+    ID_TYPE base = 1;
+    for (int g = 0; g < group && g < 8; g++)
+    {
+        base += counts[g];
+    }
+    return base;
 }
 static void availablePwr_Init(struct Alloc_nodeObj *pnode, int rated_pwr)
 {
@@ -204,6 +255,52 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
 
     *GET_REAR_CANARY_PTR(p, Alloc_PlugsArray) = REAR_MAGICWORD;
 }
+static size_t contactors_init_subgraph(Alloc_ContactorsArray *p, size_t idx, ID_TYPE ring_base, ID_TYPE matrix_base, ID_TYPE R, ID_TYPE H)
+{
+    size_t c = idx;
+    // 线环接触器
+    for (ID_TYPE i = 1; i <= R; i++)
+    {
+        p->obj_array[c].id = c;
+        p->obj_array[c].isClosed = false;
+        p->obj_array[c].node1 = ring_base + i;
+        p->obj_array[c].node2 = ring_base + (i + 1 > R ? 1 : i + 1);
+        c++;
+    }
+    // 对径接触器
+    for (ID_TYPE i = 1; i <= R; i++)
+    {
+        p->obj_array[c].id = c;
+        p->obj_array[c].isClosed = false;
+        p->obj_array[c].node1 = ring_base + i;
+        p->obj_array[c].node2 = ring_base + (i + R / 2 > R ? i + R / 2 - R : i + R / 2);
+        c++;
+    }
+    // 矩阵-矩阵接触器 (3XX)
+    for (ID_TYPE n1 = 1; n1 <= H; n1++)
+    {
+        for (ID_TYPE n2 = n1 + 1; n2 <= H; n2++)
+        {
+            p->obj_array[c].id = c;
+            p->obj_array[c].isClosed = false;
+            p->obj_array[c].node1 = matrix_base + n1;
+            p->obj_array[c].node2 = matrix_base + n2;
+            c++;
+        }
+    }
+    // 矩阵-线环接触器 (4XX)：node1=矩阵节点，node2=编码(alpha*100+beta)
+    for (ID_TYPE n1 = 1; n1 <= H; n1++)
+    {
+        p->obj_array[c].id = c;
+        p->obj_array[c].isClosed = false;
+        p->obj_array[c].node1 = matrix_base + n1;
+        ID_TYPE alpha = ring_base + n1;
+        ID_TYPE beta = ring_base + n1 + H;
+        p->obj_array[c].node2 = alpha * CONTACTOR_SPLICE_MULTIPLE + beta;
+        c++;
+    }
+    return c;
+}
 static void Alloc_ContactorsArray_Init(void *const ptr, size_t n)
 {
 
@@ -215,6 +312,21 @@ static void Alloc_ContactorsArray_Init(void *const ptr, size_t n)
     Alloc_ContactorsArray *p = (Alloc_ContactorsArray *)ptr;
     p->length = n;
     p->front_canary = FRONT_MAGICWORD;
+
+    // 双半矩阵半环形：左右两个 (线环+矩阵) 子图
+    if (DualSemiHybrid == g_building_topology)
+    {
+        ID_TYPE R = NODE_MAX / 3; /* 单侧线环节点数 */
+        ID_TYPE H = R / 2;        /* 单侧矩阵节点数 */
+        ID_TYPE S = R + H;        /* 单侧规模 */
+        NODES_MAX_ENCIRCLE = R;
+        size_t idx = 1;
+        idx = contactors_init_subgraph(p, idx, 0, R, R, H);     /* 左侧子图 */
+        idx = contactors_init_subgraph(p, idx, S, S + R, R, H); /* 右侧子图 */
+        *GET_REAR_CANARY_PTR(p, Alloc_ContactorsArray) = REAR_MAGICWORD;
+        return;
+    }
+
     // 创建环形接触器链路
     size_t initcnt = n;
 
@@ -326,14 +438,22 @@ bool database_building(TOPOTYPE topology, size_t nodes_num, size_t plugs_num)
         }                                                                                    \
     } while (0);
 
+    // 数组初始化阶段尚未设置 TOPOLOGY_TYPE，用该全局暂存当前拓扑供各 Init 函数判断
+    g_building_topology = topology;
+
     size_t Nodes_varonstack = nodes_num;
     size_t Plugs_varonstack = plugs_num;
     size_t Contactors_varonstack = 2 * nodes_num;
     size_t ReqSettler_varonstack = Plugs_varonstack;
-    size_t MatrixNodes_varonstack = (SemiHybrid == topology) ? nodes_num / 2 : 0;
+    size_t MatrixNodes_varonstack = (SemiHybrid == topology || DualSemiHybrid == topology) ? nodes_num / 2 : 0;
     (void)pau_calloc(0, __func__);
-    directedConfig_Init(Nodes_varonstack, Plugs_varonstack, MatrixNodes_varonstack);
-    if (SemiHybrid == topology)
+    directedConfig_Init(nodes_num, Plugs_varonstack, MatrixNodes_varonstack, topology);
+    if (DualSemiHybrid == topology)
+    {
+        Nodes_varonstack = 3 * nodes_num;                                   // 左右两个 (线环+矩阵)
+        Contactors_varonstack = 4 * nodes_num + 2 * factorial(nodes_num / 2);
+    }
+    else if (SemiHybrid == topology)
     {
         Nodes_varonstack += nodes_num / 2;
         Contactors_varonstack += factorial(nodes_num / 2);

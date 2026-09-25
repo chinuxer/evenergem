@@ -4,6 +4,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QRadioButton>
+#include <QMessageBox>
 
 TopologySelectDialog::TopologySelectDialog(QWidget *parent)
     : QDialog(parent), m_selected(FullMatrix)
@@ -20,14 +21,16 @@ TopologySelectDialog::TopologySelectDialog(QWidget *parent)
 
     QHBoxLayout *buttonLayout = new QHBoxLayout;
 
-    // 三个单选按钮
+    // 四个单选按钮
     QRadioButton *fullMatrixBtn = new QRadioButton("全矩阵结构", this);
     QRadioButton *ringBtn = new QRadioButton("环形结构", this);
     QRadioButton *hybridBtn = new QRadioButton("半矩阵半环形", this);
+    QRadioButton *dualHybridBtn = new QRadioButton("双半矩阵半环形", this);
 
        fullMatrixBtn->setStyleSheet(lightBlueStyle);
     ringBtn->setStyleSheet(lightBlueStyle);
     hybridBtn->setStyleSheet(lightBlueStyle);
+    dualHybridBtn->setStyleSheet(lightBlueStyle);
 
     fullMatrixBtn->setChecked(true); // 默认选中
 
@@ -36,6 +39,7 @@ TopologySelectDialog::TopologySelectDialog(QWidget *parent)
     m_buttonGroup->addButton(fullMatrixBtn, FullMatrix);
     m_buttonGroup->addButton(ringBtn, CakraWheel);
     m_buttonGroup->addButton(hybridBtn, SemiHybrid);
+    m_buttonGroup->addButton(dualHybridBtn, DualSemiHybrid);
 
     connect(m_buttonGroup, QOverload<int>::of(&QButtonGroup::buttonClicked),
             this, &TopologySelectDialog::onButtonClicked);
@@ -44,6 +48,7 @@ TopologySelectDialog::TopologySelectDialog(QWidget *parent)
     buttonLayout->addWidget(fullMatrixBtn);
     buttonLayout->addWidget(ringBtn);
     buttonLayout->addWidget(hybridBtn);
+    buttonLayout->addWidget(dualHybridBtn);
 
     mainLayout->addLayout(buttonLayout);
 
@@ -56,4 +61,21 @@ TopologySelectDialog::TopologySelectDialog(QWidget *parent)
 void TopologySelectDialog::onButtonClicked(int id)
 {
     m_selected = static_cast<TOPOTYPE>(id);
+}
+
+void TopologySelectDialog::accept()
+{
+    // 全矩阵结构尚未完成，提示并回退到选择界面
+    if (FullMatrix == m_selected)
+    {
+        QMessageBox box(this);
+        box.setWindowTitle(tr("提示"));
+        box.setIcon(QMessageBox::Warning);
+        box.setText(tr("作者正加班完善该工作"));
+        box.setStandardButtons(QMessageBox::Ok);
+        box.setButtonText(QMessageBox::Ok, tr("返回"));
+        box.exec();
+        return; // 不关闭选择对话框
+    }
+    QDialog::accept();
 }

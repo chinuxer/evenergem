@@ -12,6 +12,9 @@ public:
     explicit TopologySelectDialog(QWidget *parent = nullptr);
     TOPOTYPE selectedTopology() const { return m_selected; }
 
+public slots:
+    void accept() override;
+
 private slots:
     void onButtonClicked(int id);
 

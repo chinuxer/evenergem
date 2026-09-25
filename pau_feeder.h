@@ -90,6 +90,88 @@ int get_contactor_pwrflow_dest(struct Alloc_contactorObj *pau_data, bool remoteM
     return -1;
 }
 
+// 由中间计算结果（gtarget_result）确定某个闭合接触器的功率潮流目标节点：
+// 该节点是潮流流经此接触器后所到达的父节点（更靠近直连节点/充电桩的一侧）。
+// 返回节点编号；若该接触器不在任何已发布路径中则返回 -1。
+int get_contactor_pwrflow_target_node(ID_TYPE contactorId)
+{
+    if (contactorId < 1 || contactorId > CONTACTOR_MAX)
+    {
+        return -1;
+    }
+    for (int i = 0; i < MAXNODES_MEM_LMT; i++)
+    {
+        if (gtarget_result[i].u8PolicyTargetPowerNodeNum == 0)
+        {
+            continue;
+        }
+        for (int j = 0; j < gtarget_result[i].u8PolicyTargetPowerNodeNum; j++)
+        {
+            if (gtarget_result[i].PolicyTarget_RelayNo[j][0] == contactorId ||
+                gtarget_result[i].PolicyTarget_RelayNo[j][1] == contactorId)
+            {
+                return (int)gtarget_result[i].u8ParentNodeNo[j];
+            }
+        }
+    }
+    return -1;
+}
+
+// 判断某个接触器是否出现在任一已发布的分配结果（outcome）路径中。
+// 用于界面显示：核心的 isClosed 可能因节点被移出而残留为 true（陈旧标志），
+// 只有真正出现在 outcome 里的接触器才应显示为闭合/承载潮流。
+bool is_contactor_in_outcomes(ID_TYPE contactorId)
+{
+    if (contactorId < 1 || contactorId > CONTACTOR_MAX)
+    {
+        return false;
+    }
+    for (int i = 0; i < MAXNODES_MEM_LMT; i++)
+    {
+        if (gtarget_result[i].u8PolicyTargetPowerNodeNum == 0)
+        {
+            continue;
+        }
+        for (int j = 0; j < gtarget_result[i].u8PolicyTargetPowerNodeNum; j++)
+        {
+            if (gtarget_result[i].PolicyTarget_RelayNo[j][0] == contactorId ||
+                gtarget_result[i].PolicyTarget_RelayNo[j][1] == contactorId)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// 由中间计算结果（gtarget_result）确定某个闭合接触器的功率潮流源节点：
+// 该节点是潮流进入此接触器前所在的子节点（离直连节点更远的一侧），
+// 对径/4xx 等简化线段中源节点总在箭头尾端附近，比用目标节点判定更稳定。
+// 返回节点编号；若该接触器不在任何已发布路径中则返回 -1。
+int get_contactor_pwrflow_src_node(ID_TYPE contactorId)
+{
+    if (contactorId < 1 || contactorId > CONTACTOR_MAX)
+    {
+        return -1;
+    }
+    for (int i = 0; i < MAXNODES_MEM_LMT; i++)
+    {
+        if (gtarget_result[i].u8PolicyTargetPowerNodeNum == 0)
+        {
+            continue;
+        }
+        for (int j = 0; j < gtarget_result[i].u8PolicyTargetPowerNodeNum; j++)
+        {
+            if (gtarget_result[i].PolicyTarget_RelayNo[j][0] == contactorId ||
+                gtarget_result[i].PolicyTarget_RelayNo[j][1] == contactorId)
+            {
+                return (int)gtarget_result[i].PolicyTargetdPowerNode[j];
+            }
+        }
+    }
+    return -1;
+}
+
 #ifdef __cplusplus
 // 将对应充电桩id的节点分配结果PolicyTargetdPowerNode转成QList<int>，用于Qt界面显示
 QList<int> get_plug_allocated_nodes(int plugId)

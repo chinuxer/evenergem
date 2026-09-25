@@ -31,9 +31,10 @@ struct
 
     int qh;
     int qt;
-    int nodeCount;   /* 线环节点数 R */
-    int matrixCount; /* 半矩阵扩展节点数 H=R/2, 非半矩阵为 0 */
-    int totalCount;  /* 节点总数 R+H */
+    int nodeCount;   /* 线环节点数 R（双结构为单侧 R） */
+    int matrixCount; /* 半矩阵扩展节点数 H=R/2（双结构为单侧 H），非半矩阵为 0 */
+    int totalCount;  /* 节点总数 R+H（双结构为 2*(R+H)） */
+    bool dual;       /* 双半矩阵半环形：左右两个 (线环+矩阵) 子图 */
     int plugCount;
     int tot; /* 邻接表已用边数（前向星，有向边） */
     int parent[MAXNODES_MEM_LMT + 1];
@@ -59,44 +60,58 @@ static inline void add_edge(int u, int v)
  * 半矩阵扩展规则（R 线环节点 + H=R/2 矩阵节点）：
  *   矩阵节点 R+k 与线环节点 k 和 k+H 相连（对径开关 + 4XX 接触器）
  *   所有矩阵节点两两相连（3XX 接触器构成的全连接矩阵母线）
+ *
+ * 双半矩阵半环形：左右两个上述子图，左侧线环/矩阵位于前半段，右侧位于后半段。
  */
-void build_graph(void)
+static void build_subgraph(int ring_base, int matrix_base, int R, int H)
 {
-    pconfig_graph->tot = 0;
-    int n = pconfig_graph->nodeCount;
-    int h = pconfig_graph->matrixCount;
-    int t = pconfig_graph->totalCount;
-    memset(pconfig_graph->head, 0, sizeof(pconfig_graph->head));
-    for (int u = 1; u <= n; ++u)
+    for (int u = 1; u <= R; ++u)
     {
-        int v1 = (u == 1 ? n : u - 1);                /* 左邻居 */
-        int v2 = (u == n ? 1 : u + 1);                /* 右邻居 */
-        int v3 = (u > n / 2 ? u - n / 2 : u + n / 2); /* 对径 */
-        add_edge(u, v1);
-        add_edge(v1, u);
-        add_edge(u, v2);
-        add_edge(v2, u);
-        add_edge(u, v3);
-        add_edge(v3, u);
+        int ru = ring_base + u;
+        int v1 = ring_base + (u == 1 ? R : u - 1);                 /* 左邻居 */
+        int v2 = ring_base + (u == R ? 1 : u + 1);                 /* 右邻居 */
+        int v3 = ring_base + (u > R / 2 ? u - R / 2 : u + R / 2);  /* 对径 */
+        add_edge(ru, v1);
+        add_edge(v1, ru);
+        add_edge(ru, v2);
+        add_edge(v2, ru);
+        add_edge(ru, v3);
+        add_edge(v3, ru);
     }
-    /* 扩容建图：半矩阵节点 */
-    for (int k = 1; k <= h; ++k)
+    for (int k = 1; k <= H; ++k)
     {
-        int m = n + k;         /* 矩阵节点编号 R+k */
-        int alpha = k;         /* 对径开关下端点 k */
-        int beta = k + h;      /* 对径开关下端点 k+H */
+        int m = matrix_base + k;                                    /* 矩阵节点 */
+        int alpha = ring_base + k;                                  /* 下端点 k */
+        int beta = ring_base + (k + H > R ? k + H - R : k + H);     /* 下端点 k+H */
         add_edge(m, alpha);
         add_edge(alpha, m);
         add_edge(m, beta);
         add_edge(beta, m);
     }
-    for (int a = n + 1; a <= t; ++a)
+    for (int a = matrix_base + 1; a <= matrix_base + H; ++a)
     {
-        for (int b = a + 1; b <= t; ++b)
+        for (int b = a + 1; b <= matrix_base + H; ++b)
         {
             add_edge(a, b);
             add_edge(b, a);
         }
+    }
+}
+void build_graph(void)
+{
+    pconfig_graph->tot = 0;
+    int n = pconfig_graph->nodeCount;
+    int h = pconfig_graph->matrixCount;
+    memset(pconfig_graph->head, 0, sizeof(pconfig_graph->head));
+    if (pconfig_graph->dual)
+    {
+        int S = n + h; /* 单侧规模 */
+        build_subgraph(0, n, n, h);     /* 左侧子图 */
+        build_subgraph(S, S + n, n, h); /* 右侧子图 */
+    }
+    else
+    {
+        build_subgraph(0, n, n, h);
     }
 }
 
@@ -136,8 +151,10 @@ static bool is_edge_available(int u, int v)
             {
                 continue;
             }
-            // 还需对应的对径分段接触器闭合，矩阵节点才真正连到该线环节点
-            struct Alloc_contactorObj *pseg = refer_Contactor_Extracted(NODES_MAX_ENCIRCLE + ring);
+            // 还需对应的对径分段接触器闭合，矩阵节点才真正连到该线环节点。
+            // 必须按拓扑求分段接触器编号：双结构右半图的对径分段在右侧对径组，
+            // 不能再用单结构的 NODES_MAX_ENCIRCLE + ring（会命中错误的接触器）。
+            struct Alloc_contactorObj *pseg = refer_Contactor_Extracted(diagonal_contactor_of_ring_node(ring));
             if (pseg && pseg->isClosed)
             {
                 return true;
@@ -152,6 +169,17 @@ void bfs(ID_TYPE start, ID_TYPE plugid, bool find_type)
     pconfig_graph->qh = pconfig_graph->qt = 0;
     pconfig_graph->dist[start] = 0;
     pconfig_graph->q[pconfig_graph->qt++] = start;
+    /* 双半矩阵半环形：该桩的镜像直连节点也是根（hops=0，等位） */
+    if (pconfig_graph->dual && ASSERT_PLUG_ID(plugid) &&
+        start == refer_Plug_Extracted(plugid)->connectedNode)
+    {
+        ID_TYPE twin = get_plug_twin_node(plugid);
+        if (ASSERT_NODE_ID(twin) && pconfig_graph->dist[twin] == -1)
+        {
+            pconfig_graph->dist[twin] = 0;
+            pconfig_graph->q[pconfig_graph->qt++] = twin;
+        }
+    }
 
     while (pconfig_graph->qh < pconfig_graph->qt)
     {
@@ -178,7 +206,9 @@ void bfs(ID_TYPE start, ID_TYPE plugid, bool find_type)
 // 供外部调用的接口 将config.dist和config.locked的访问封装在接口内
 int get_hops_occupied(ID_TYPE start, ID_TYPE nodeid, ID_TYPE plugid)
 {
-    if (!ASSERT_NODE_ID_ENCIRCLE(start) || !ASSERT_PLUG_ID(plugid))
+    // 双半矩阵半环形下 start 可能是右环节点（> NODES_MAX_ENCIRCLE），
+    // 故此处按通用节点 ID 校验，而非仅线环 ID。
+    if (!ASSERT_NODE_ID(start) || !ASSERT_PLUG_ID(plugid))
     {
         return -1;
     }
@@ -225,7 +255,7 @@ int get_locked(ID_TYPE nodeid)
     return pconfig_graph->locked[nodeid];
 }
 
-void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes)
+void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes, TOPOTYPE topology)
 {
     if ((nodes & 1) > 0)
     {
@@ -235,8 +265,13 @@ void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes)
     {
         return;
     }
+    int total = nodes + matrix_nodes;
+    if (DualSemiHybrid == topology)
+    {
+        total = 2 * (nodes + matrix_nodes);
+    }
     // 防御性检查：节点数不能超过 MAXNODES_MEM_LMT
-    if (nodes > MAXNODES_MEM_LMT || nodes + matrix_nodes > MAXNODES_MEM_LMT)
+    if (nodes > MAXNODES_MEM_LMT || total > MAXNODES_MEM_LMT)
     {
         pau_printf("ERROR: Requested nodes (%u) exceeds MAXNODES_MEM_LMT (%u)\n",
                    nodes, MAXNODES_MEM_LMT);
@@ -252,7 +287,8 @@ void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes)
     pau_printf("PAU_DIRECTED_CONFIG_INIT: %x\n", sizeof(*pconfig_graph));
     pconfig_graph->nodeCount = nodes;
     pconfig_graph->matrixCount = matrix_nodes;
-    pconfig_graph->totalCount = nodes + matrix_nodes;
+    pconfig_graph->totalCount = total;
+    pconfig_graph->dual = (DualSemiHybrid == topology);
     pconfig_graph->plugCount = plugs;
     pconfig_graph->front_canary = FRONT_MAGICWORD;
     pconfig_graph->rear_canary = REAR_MAGICWORD;

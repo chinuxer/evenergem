@@ -30,6 +30,7 @@ extern "C"
         FullMatrix,
         CakraWheel,
         SemiHybrid,
+        DualSemiHybrid,
     } TOPOTYPE;
     typedef enum
     {
@@ -209,6 +210,10 @@ VARIABLE_LIST_PENDING_EXPANDED
 #define ASSERT_FLOW_EMBARGO (gpPlugsArray->limitedpwr < gpPlugsArray->grosspwr)
 #define ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX (NODES_MAX_ENCIRCLE != NODE_MAX)
 #define ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX (NODES_MAX_ENCIRCLE == NODE_MAX)
+#define ASSERT_TOPOTYPE_DUAL_SEMIMATRIX (DualSemiHybrid == TOPOLOGY_TYPE)
+// 双半矩阵半环形：单侧线环节点数 R、单侧规模（R + R/2）= NODE_MAX/2
+#define DUAL_RING_PER_SIDE (NODE_MAX / 3)
+#define DUAL_SIDE_SIZE (NODE_MAX / 2)
 #define CONTACTOR_SPLICE_MULTIPLE 100
 #define NODE_AMPS_PER_MODULE 100 // 单个功率模块折算的额定电流 (A)
 #define ASSERT_NODE_ID(id) ((id) <= NODE_MAX && (id) > ID_VAIN)
@@ -335,7 +340,7 @@ struct Alloc_plugObj *refer_Plug_Extracted(ID_TYPE plug);
 struct Alloc_contactorObj *refer_Contactor_Extracted(ID_TYPE contactor);
 struct Tactic_ReqCurrentObj *refer_ReqSettler_Extracted(ID_TYPE plug);
 #endif // __IMPORT_PAU_DBFUNC__
-    void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes);
+    void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes, TOPOTYPE topology);
     CONTACTOR_TYPE contactor_type(ID_TYPE contactorid);
     size_t node_current_amps(ID_TYPE nodeid);
     void set_contactor_type_limit(CONTACTOR_TYPE type, size_t amps);
@@ -343,6 +348,11 @@ struct Tactic_ReqCurrentObj *refer_ReqSettler_Extracted(ID_TYPE plug);
     // UI 日志回传：由 UI 层注册回调，把底层业务日志（如接触器超限）推送到界面操作日志
     void pau_set_ui_log_sink(void (*sink)(const char *msg));
     void pau_ui_log(const char *msg);
+    // 双半矩阵半环形：返回充电桩右图镜像直连节点，非双结构返回 ID_VAIN
+    ID_TYPE get_plug_twin_node(ID_TYPE plugid);
+    // 双半矩阵半环形接触器分组基址（1 起）：0左线环 1左对径 2左矩阵矩阵 3左矩阵线环
+    //                                    4右线环 5右对径 6右矩阵矩阵 7右矩阵线环
+    ID_TYPE dual_contactor_group_base(int group);
 #ifdef __cplusplus
 }
 #endif // __cplusplus

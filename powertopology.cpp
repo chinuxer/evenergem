@@ -34,12 +34,35 @@ void SimpleTopology::initialize(const TopologyConfig &config)
         node.pau_data = refer_Node_Extracted(i); // 关联到底层数据
         m_nodes.append(node);
     }
+    if (DualSemiHybrid == config.topotype)
+    {
+        int S = config.nodeCount * 3 / 2; // 单侧规模
+        for (int i = 1; i <= config.nodeCount; i++)
+        {
+            PowerNode node;
+            node.id = S + i; // 右线环
+            node.disabled_recover = false;
+            node.pau_data = refer_Node_Extracted(node.id);
+            m_nodes.append(node);
+        }
+    }
     for (int i = 1; i <= config.nodeCount / 2; i++)
     {
         PowerNode node;
         node.id = i + config.nodeCount;
         node.pau_data = refer_Node_Extracted(node.id); // 关联到底层数据
         m_matrixnodes.append(node);
+    }
+    if (DualSemiHybrid == config.topotype)
+    {
+        int S = config.nodeCount * 3 / 2;
+        for (int i = 1; i <= config.nodeCount / 2; i++)
+        {
+            PowerNode node;
+            node.id = S + config.nodeCount + i; // 右矩阵
+            node.pau_data = refer_Node_Extracted(node.id);
+            m_matrixnodes.append(node);
+        }
     }
     // 创建接触器
 
@@ -50,7 +73,7 @@ void SimpleTopology::initialize(const TopologyConfig &config)
         contactor.pau_data = refer_Contactor_Extracted(i); // 关联到底层数据
         m_contactors.append(contactor);
     }
-    if (SemiHybrid == config.topotype)
+    if (SemiHybrid == config.topotype || DualSemiHybrid == config.topotype)
     {
         for (int i = 1 + (2 * config.nodeCount); i <= CONTACTOR_MAX; i++)
         {
