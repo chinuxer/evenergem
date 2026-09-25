@@ -787,6 +787,16 @@ void MainWindow::onApplyConfigClicked()
         ID_TYPE nodeId = i + 1;
         (void)::oprt_node_module_count_set(nodeId, static_cast<size_t>(capacities[i]));
     }
+
+    // ========== 7b. 应用接触器限流配置（无配置文件时用默认值 0 = 不限流） ==========
+    {
+        const QHash<int, int> contactorLimits = loadContactorLimits();
+        for (int type = 0; type < CONTACTOR_TYPE_COUNT; ++type)
+        {
+            (void)::set_contactor_type_limit(static_cast<CONTACTOR_TYPE>(type),
+                                             static_cast<size_t>(contactorLimits.value(type, defaultContactorLimit())));
+        }
+    }
     ::recover_limited_power();
     // ========== 8. 清除旧的发布结果（避免显示过时状态） ==========
     for (int n = 1; n <= pileCount; ++n)
@@ -2252,6 +2262,86 @@ bool MainWindow::saveNodeCapacities(const QVector<int> &capacities, QString *err
     return true;
 }
 
+// 接触器类型 -> 配置文件中使用的稳定字符串键
+static const char *contactorLimitKey(int type)
+{
+    switch (type)
+    {
+    case CONTACTOR_DIRECT:
+        return "direct";
+    case CONTACTOR_RING:
+        return "ring";
+    case CONTACTOR_DIAGONAL:
+        return "diagonal";
+    case CONTACTOR_MATRIX:
+        return "matrix";
+    case CONTACTOR_MATRIX_RING:
+        return "matrix_ring";
+    default:
+        return nullptr;
+    }
+}
+
+QHash<int, int> MainWindow::loadContactorLimits() const
+{
+    QHash<int, int> limits;
+    const QString configPath = QDir(QCoreApplication::applicationDirPath()).filePath("contactor_limit_config.json");
+    QFile file(configPath);
+    if (!file.open(QIODevice::ReadOnly))
+        return limits;
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject())
+        return limits;
+
+    const QJsonObject limitsObj = document.object().value("contactor_limits").toObject();
+    for (int type = 0; type < CONTACTOR_TYPE_COUNT; ++type)
+    {
+        const char *key = contactorLimitKey(type);
+        if (nullptr == key)
+            continue;
+
+        const QJsonValue value = limitsObj.value(QString::fromLatin1(key));
+        if (!value.isDouble())
+            continue;
+
+        const double amps = value.toDouble();
+        if (amps != std::floor(amps) || amps < 0 || amps > 2000)
+            continue;
+
+        limits.insert(type, static_cast<int>(amps));
+    }
+    return limits;
+}
+
+bool MainWindow::saveContactorLimits(const QHash<int, int> &limits, QString *errorMessage) const
+{
+    QJsonObject limitsObj;
+    for (int type = 0; type < CONTACTOR_TYPE_COUNT; ++type)
+    {
+        const char *key = contactorLimitKey(type);
+        if (nullptr == key)
+            continue;
+        limitsObj.insert(QString::fromLatin1(key), limits.value(type, defaultContactorLimit()));
+    }
+
+    QJsonObject root;
+    root.insert("contactor_limits", limitsObj);
+
+    const QDir executableDir(QCoreApplication::applicationDirPath());
+    QSaveFile configFile(executableDir.filePath("contactor_limit_config.json"));
+    if (!configFile.open(QIODevice::WriteOnly) ||
+        configFile.write(QJsonDocument(root).toJson(QJsonDocument::Indented)) < 0 ||
+        !configFile.commit())
+    {
+        if (errorMessage)
+            *errorMessage = tr("无法保存 %1").arg(configFile.fileName());
+        return false;
+    }
+    return true;
+}
+
 void MainWindow::onNodeCapacitySettingsTriggered()
 {
     const int nodeCount = activeNodeCount();
@@ -2929,6 +3019,9 @@ void MainWindow::showContactorLoadDialog()
     };
     QVector<ContactorSetting> settings;
 
+    // 读取已保存的限流配置；没有配置文件时显示默认值（0 = 不限流）
+    const QHash<int, int> savedLimits = loadContactorLimits();
+
     // ========== 1. 充电桩直连接触器设置（所有拓扑都有） ==========
     QGroupBox *directGroup = new QGroupBox("充电桩直连接触器限流设置", &dialog);
     QHBoxLayout *directLayout = new QHBoxLayout(directGroup);
@@ -2941,7 +3034,7 @@ void MainWindow::showContactorLoadDialog()
     directSpinBox->setRange(0, 2000);
     directSpinBox->setSingleStep(50);
     directSpinBox->setSuffix(" A");
-    directSpinBox->setValue(2000); // 默认2000A（直连接触器容量较大）
+    directSpinBox->setValue(savedLimits.value(CONTACTOR_DIRECT, defaultContactorLimit()));
 
     directLayout->addWidget(directLabel);
     directLayout->addWidget(directSpinBox);
@@ -2954,7 +3047,7 @@ void MainWindow::showContactorLoadDialog()
     directSetting.spinBox = directSpinBox;
     directSetting.label = directLabel;
     directSetting.name = "直连接触器";
-    directSetting.defaultValue = 2000;
+    directSetting.defaultValue = defaultContactorLimit();
     directSetting.type = CONTACTOR_DIRECT;
     settings.append(directSetting);
 
@@ -2972,7 +3065,7 @@ void MainWindow::showContactorLoadDialog()
         ringSpinBox->setRange(0, 2000);
         ringSpinBox->setSingleStep(50);
         ringSpinBox->setSuffix(" A");
-        ringSpinBox->setValue(2000); // 默认2000A
+        ringSpinBox->setValue(savedLimits.value(CONTACTOR_RING, defaultContactorLimit()));
 
         ringLayout->addWidget(ringLabel);
         ringLayout->addWidget(ringSpinBox);
@@ -2985,7 +3078,7 @@ void MainWindow::showContactorLoadDialog()
         ringSetting.spinBox = ringSpinBox;
         ringSetting.label = ringLabel;
         ringSetting.name = "环形接触器";
-        ringSetting.defaultValue = 200;
+        ringSetting.defaultValue = defaultContactorLimit();
         ringSetting.type = CONTACTOR_RING;
         settings.append(ringSetting);
     }
@@ -3004,7 +3097,7 @@ void MainWindow::showContactorLoadDialog()
         diagSpinBox->setRange(0, 2000);
         diagSpinBox->setSingleStep(50);
         diagSpinBox->setSuffix(" A");
-        diagSpinBox->setValue(2000); // 默认2000A
+        diagSpinBox->setValue(savedLimits.value(CONTACTOR_DIAGONAL, defaultContactorLimit()));
 
         diagLayout->addWidget(diagLabel);
         diagLayout->addWidget(diagSpinBox);
@@ -3017,7 +3110,7 @@ void MainWindow::showContactorLoadDialog()
         diagSetting.spinBox = diagSpinBox;
         diagSetting.label = diagLabel;
         diagSetting.name = "对径接触器";
-        diagSetting.defaultValue = 200;
+        diagSetting.defaultValue = defaultContactorLimit();
         diagSetting.type = CONTACTOR_DIAGONAL;
         settings.append(diagSetting);
     }
@@ -3037,7 +3130,7 @@ void MainWindow::showContactorLoadDialog()
         matrixSpinBox->setRange(0, 2000);
         matrixSpinBox->setSingleStep(50);
         matrixSpinBox->setSuffix(" A");
-        matrixSpinBox->setValue(2000); // 默认2000A
+        matrixSpinBox->setValue(savedLimits.value(CONTACTOR_MATRIX, defaultContactorLimit()));
 
         matrixLayout->addWidget(matrixLabel);
         matrixLayout->addWidget(matrixSpinBox);
@@ -3050,7 +3143,7 @@ void MainWindow::showContactorLoadDialog()
         matrixSetting.spinBox = matrixSpinBox;
         matrixSetting.label = matrixLabel;
         matrixSetting.name = "矩阵接触器";
-        matrixSetting.defaultValue = 150;
+        matrixSetting.defaultValue = defaultContactorLimit();
         matrixSetting.type = CONTACTOR_MATRIX;
         settings.append(matrixSetting);
     }
@@ -3070,7 +3163,7 @@ void MainWindow::showContactorLoadDialog()
         matrixRingSpinBox->setRange(0, 2000);
         matrixRingSpinBox->setSingleStep(50);
         matrixRingSpinBox->setSuffix(" A");
-        matrixRingSpinBox->setValue(2000); // 默认2000A
+        matrixRingSpinBox->setValue(savedLimits.value(CONTACTOR_MATRIX_RING, defaultContactorLimit()));
 
         matrixRingLayout->addWidget(matrixRingLabel);
         matrixRingLayout->addWidget(matrixRingSpinBox);
@@ -3083,7 +3176,7 @@ void MainWindow::showContactorLoadDialog()
         matrixRingSetting.spinBox = matrixRingSpinBox;
         matrixRingSetting.label = matrixRingLabel;
         matrixRingSetting.name = "矩阵-环形连接接触器";
-        matrixRingSetting.defaultValue = 100;
+        matrixRingSetting.defaultValue = defaultContactorLimit();
         matrixRingSetting.type = CONTACTOR_MATRIX_RING;
         settings.append(matrixRingSetting);
     }
@@ -3113,20 +3206,29 @@ void MainWindow::showContactorLoadDialog()
             {
         // 应用设置
         QStringList logMessages;
-        
+        QHash<int, int> limits;
+
         for (const auto &setting : settings) {
             int value = setting.spinBox->value();
+            limits.insert((int)setting.type, value);
             logMessages << QString("%1限流设置为 %2 A").arg(setting.name).arg(value);
 
             // 调用底层接口设置该类接触器限流（0 表示不限流）
             ::set_contactor_type_limit(setting.type, (size_t)value);
         }
-        
+
+        // 持久化到 contactor_limit_config.json，下次打开时回显
+        QString errorMessage;
+        if (!saveContactorLimits(limits, &errorMessage)) {
+            QMessageBox::warning(&dialog, tr("接触器负载"), errorMessage);
+            return; // 保存失败则不关闭对话框，便于重试
+        }
+
         // 记录日志
         for (const QString &msg : logMessages) {
             ui->logTextEdit->append(QString("✓ %1").arg(msg));
         }
-        
+
         dialog.accept(); });
 
     connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);

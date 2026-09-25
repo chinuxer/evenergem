@@ -93,6 +93,11 @@ private:
     int activeNodeCount() const;
     QVector<int> loadNodeCapacities(int nodeCount) const;
     bool saveNodeCapacities(const QVector<int> &capacities, QString *errorMessage) const;
+    // 接触器限流配置：<exe_dir>/contactor_limit_config.json，键为类型名；缺失/损坏返回空
+    QHash<int, int> loadContactorLimits() const;
+    bool saveContactorLimits(const QHash<int, int> &limits, QString *errorMessage) const;
+    // 接触器限流默认值（0 = 不限流）
+    int defaultContactorLimit() const { return 0; }
 
     void updatePowerLimitPercent(double value);
     double getTotalSystemPower() const;
