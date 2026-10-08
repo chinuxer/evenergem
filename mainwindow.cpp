@@ -74,6 +74,7 @@ static constexpr double kDualFigureGapExtra = 200.0;
 // 闭合接触器的统一层级：必须高于所有断开状态接触器的层级（断开层级最高为 80），
 // 否则重叠的断开虚线会盖住已着色的闭合线段（双线环矩阵 3xx 曾出现此问题）。
 static constexpr double kClosedContactorZ = 81.0;
+static constexpr double kPileInfoZ = 100.0;
 void MainWindow::appendOperationLog(const QString &msg)
 {
     ui->logTextEdit->append(msg);
@@ -113,7 +114,8 @@ double MainWindow::getYFromLineItemX(int nodeIndex, int nodescnt, double x, doub
     return y1 + k * (x - x1);
 }
 
-QColor MainWindow::contactorColor(struct Alloc_contactorObj *pc){
+QColor MainWindow::contactorColor(struct Alloc_contactorObj *pc)
+{
     if (NULL == pc)
     {
         return QColor();
@@ -343,7 +345,8 @@ void MainWindow::updateContactorArrow(QGraphicsLineItem *line, const QColor &col
     //  - 真实节点端就是去向节点 => 箭头由另一端指向该端（指向节点）
     // 对径/4xx 线段一端是节点、另一端是圆心或交点；1xx 两端都是节点。
     // 不能用两端到某节点的欧氏距离直接比较，否则简化线段会指反。
-    const auto isEndpointOf = [](const QPointF &pt, const QPointF &nodePos) {
+    const auto isEndpointOf = [](const QPointF &pt, const QPointF &nodePos)
+    {
         return QLineF(pt, nodePos).length() < 0.5;
     };
     QPointF dir = lineDir; // 默认 p1 -> p2
@@ -1573,6 +1576,7 @@ void MainWindow::setupGraphicsScene()
         pileItem->setBrush(pile.color);
         pileItem->setPen(QPen(QColor(15, 20, 35), 1, Qt::SolidLine, Qt::RoundCap));
         pileItem->setData(0, pile.id); // 存储充电桩ID
+        pileItem->setZValue(kPileInfoZ);
         m_scene->addItem(pileItem);
         m_pileItems[i] = pileItem;
 
@@ -1583,7 +1587,7 @@ void MainWindow::setupGraphicsScene()
         idLabel->setFont(QFont("Arial", 8, QFont::Bold));
         QRectF labelRect = idLabel->boundingRect();
         idLabel->setPos(pilePos.x() - labelRect.width() / 2.0, pilePos.y() - labelRect.height() / 2.0);
-        idLabel->setZValue(1);
+        idLabel->setZValue(kPileInfoZ + 1);
         m_scene->addItem(idLabel);
         m_pileIdLabelItems[i] = idLabel;
 
@@ -1591,7 +1595,7 @@ void MainWindow::setupGraphicsScene()
         QGraphicsTextItem *statusLabel = new QGraphicsTextItem();
         statusLabel->setFont(QFont("Arial", 8, QFont::Bold));
         statusLabel->setDefaultTextColor(Qt::white); // 临时颜色
-        statusLabel->setZValue(1);
+        statusLabel->setZValue(kPileInfoZ + 1);
         m_scene->addItem(statusLabel);
         m_pileLabelItems[i] = statusLabel;
 
@@ -1607,6 +1611,7 @@ void MainWindow::setupGraphicsScene()
         backgroundBox->setBrush(bgBrush);
         QPen borderPen(QColor(255, 255, 255, 150), 1);
         backgroundBox->setPen(borderPen);
+        backgroundBox->setZValue(kPileInfoZ);
         m_scene->addItem(backgroundBox);
 
         // 连接线
@@ -2091,7 +2096,7 @@ void MainWindow::showAboutDialog()
     titleLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(titleLabel);
 
-    QLabel *versionLabel = new QLabel(tr("版本：1.0.8"));
+    QLabel *versionLabel = new QLabel(tr("版本：1.1.0"));
     versionLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(versionLabel);
 

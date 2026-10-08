@@ -776,23 +776,18 @@ static bool global_contactor_overload(ID_TYPE candidate_plug, ID_TYPE candidate_
         }
     }
 
-    /* 直连接触器（虚拟，每桩承载自身总电流） */
+    /* 直连接触器（虚拟，每桩承载自身总电流，桩间相互独立，故只校验候选桩） */
     size_t direct_limit = get_contactor_type_limit(CONTACTOR_DIRECT);
-    if (0 != direct_limit)
+    if (0 != direct_limit && ASSERT_PLUG_ID(candidate_plug) &&
+        direct_loads[candidate_plug] > direct_limit)
     {
-        for (ID_TYPE plugid = 1; plugid <= PLUG_MAX; plugid++)
-        {
-            if (direct_loads[plugid] > direct_limit)
-            {
-                char msg[128];
-                sprintf(msg, "节点%u（接触器0%02u）当前负载%uA超过接触器限流值%uA",
-                        (unsigned)candidate_node, (unsigned)plugid, (unsigned)direct_loads[plugid], (unsigned)direct_limit);
-                pau_ui_log(msg);
-                pau_printf("[PAU] !!! CONTACTOR OVERLOAD: plug%u + node%u -> plug%u DIRECT contactor carries %uA > limit %uA, node REJECTED !!!\r\n",
-                           (unsigned)candidate_plug, (unsigned)candidate_node, (unsigned)plugid, (unsigned)direct_loads[plugid], (unsigned)direct_limit);
-                return true;
-            }
-        }
+        char msg[128];
+        sprintf(msg, "节点%u（接触器0%02u）当前负载%uA超过接触器限流值%uA",
+                (unsigned)candidate_node, (unsigned)candidate_plug, (unsigned)direct_loads[candidate_plug], (unsigned)direct_limit);
+        pau_ui_log(msg);
+        pau_printf("[PAU] !!! CONTACTOR OVERLOAD: plug%u + node%u -> plug%u DIRECT contactor carries %uA > limit %uA, node REJECTED !!!\r\n",
+                   (unsigned)candidate_plug, (unsigned)candidate_node, (unsigned)candidate_plug, (unsigned)direct_loads[candidate_plug], (unsigned)direct_limit);
+        return true;
     }
 
     return false;
@@ -1449,6 +1444,11 @@ static bool idlenodes_semimatrix_donatio(ID_TYPE plugid)
         {
             continue;
         }
+        // 接触器带载约束：若该赠予会使受赠桩潮流路径超限，则跳过
+        if (global_contactor_overload(successor, nodeid))
+        {
+            continue;
+        }
 
         push_NodetoPlug(nodeid, successor);
         refer_Plug_Extracted(successor)->refresh = true;
@@ -1477,7 +1477,8 @@ static bool idlenodes_semimatrix_donatio(ID_TYPE plugid)
             idle_node = nodeid;
         }
     }
-    if (optimal_plug > ID_VAIN && idle_node > ID_VAIN)
+    if (optimal_plug > ID_VAIN && idle_node > ID_VAIN &&
+        !global_contactor_overload(optimal_plug, idle_node))
     {
         push_NodetoPlug(idle_node, optimal_plug);
         refer_Plug_Extracted(optimal_plug)->refresh = true;
@@ -1560,6 +1561,11 @@ static bool idlenodes_encircle_donatio(ID_TYPE plugid)
         }
         if (optimal.score >= WEIGHT_4 * 1)
         {
+            // 接触器带载约束：若该赠予会使受赠桩潮流路径超限，则跳过
+            if (global_contactor_overload(optimal.plugid, idlenode))
+            {
+                continue;
+            }
             pau_printf("%s nodeid:%d plugid:%d\r\n", __FUNCTION__, idlenode, optimal.plugid);
             push_NodetoPlug(idlenode, optimal.plugid);
             refer_Plug_Extracted(optimal.plugid)->refresh = true;
@@ -1646,12 +1652,18 @@ static ID_TYPE ana_katabatic_flow(ID_TYPE plugid)
         ID_TYPE nodeid_alpha = c->node2 / CONTACTOR_SPLICE_MULTIPLE;
         if (ID_VAIN < nodeid_alpha && ID_VAIN == refer_Node_Extracted(nodeid_alpha)->plug_id)
         {
-            return nodeid_alpha;
+            if (!global_contactor_overload(plugid, nodeid_alpha))
+            {
+                return nodeid_alpha;
+            }
         }
         ID_TYPE nodeid_beta = c->node2 % CONTACTOR_SPLICE_MULTIPLE;
         if (ID_VAIN < nodeid_beta && ID_VAIN == refer_Node_Extracted(nodeid_beta)->plug_id)
         {
-            return nodeid_beta;
+            if (!global_contactor_overload(plugid, nodeid_beta))
+            {
+                return nodeid_beta;
+            }
         }
     }
     return ID_VAIN;
