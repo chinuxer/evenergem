@@ -27,10 +27,11 @@ extern "C"
 #define SIZING_TOLERANCE 5 // 0.5kW  匹配模块个数的容差 如果模块RATED_PWR_PER_MODULE是40kW 则80kW匹配2模块 80.5kW匹配3模块
     typedef enum
     {
-        FullMatrix,
+        NoTopology = 0,
+        FullMatrix = 1,
         CakraWheel,
         SemiHybrid,
-        DualSemiHybrid,
+        DualHybrid,
     } TOPOTYPE;
     typedef enum
     {
@@ -189,11 +190,13 @@ void pau_log_printf(const char *fmt, ...);
 #define VAR_TYPE(x) Alloc_##x##Array
 // cstat +DEFINE-hash-multiple
 #ifdef __IMPORT_GLOBALVAR__
+    TOPOTYPE g_building_topology IN_PAU_RAM_SECTION = FullMatrix;
 #define CONTEXT_EXPANDER_PROJ_GLOBAL(x) VAR_TYPE(x) * VAR_NAME(x) IN_PAU_RAM_SECTION = NULL;
     // here，Defined PAU's only 7 global variables (gpxxxArray) via metaprogramming templates
     VARIABLE_LIST_PENDING_EXPANDED
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
 #else
+extern TOPOTYPE g_building_topology;
 #define CONTEXT_EXPANDER_PROJ_GLOBAL(x) extern VAR_TYPE(x) * VAR_NAME(x);
 VARIABLE_LIST_PENDING_EXPANDED
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
@@ -203,14 +206,14 @@ VARIABLE_LIST_PENDING_EXPANDED
 #define NODE_MAX (gpNodesArray->length)
 #define CONTACTOR_MAX (gpContactorsArray->length)
 #define UNITPWR_MAX (gpNodesArray->unitpower)
-#define TOPOLOGY_TYPE (gpNodesArray->topology)
+#define TOPOLOGY_TYPE (g_building_topology)
 #define NODES_MAX_ENCIRCLE (gpNodesArray->circulo)
 #define OUTPUTPWR (gpPlugsArray->outputpwr)
 #define LIMITEDPWR (gpPlugsArray->limitedpwr)
 #define ASSERT_FLOW_EMBARGO (gpPlugsArray->limitedpwr < gpPlugsArray->grosspwr)
 #define ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX (NODES_MAX_ENCIRCLE != NODE_MAX)
 #define ASSERT_TOPOTYPE_WHEEL_UNMIXED_SIMPLEX (NODES_MAX_ENCIRCLE == NODE_MAX)
-#define ASSERT_TOPOTYPE_DUAL_SEMIMATRIX (DualSemiHybrid == TOPOLOGY_TYPE)
+#define ASSERT_TOPOTYPE_DUAL_SEMIMATRIX (DualHybrid == TOPOLOGY_TYPE)
 // 双半矩阵半环形：单侧线环节点数 R、单侧规模（R + R/2）= NODE_MAX/2
 #define DUAL_RING_PER_SIDE (NODE_MAX / 3)
 #define DUAL_SIDE_SIZE (NODE_MAX / 2)
@@ -345,9 +348,6 @@ struct Tactic_ReqCurrentObj *refer_ReqSettler_Extracted(ID_TYPE plug);
     size_t node_current_amps(ID_TYPE nodeid);
     void set_contactor_type_limit(CONTACTOR_TYPE type, size_t amps);
     size_t get_contactor_type_limit(CONTACTOR_TYPE type);
-    // UI 日志回传：由 UI 层注册回调，把底层业务日志（如接触器超限）推送到界面操作日志
-    void pau_set_ui_log_sink(void (*sink)(const char *msg));
-    void pau_ui_log(const char *msg);
     // 双半矩阵半环形：返回充电桩右图镜像直连节点，非双结构返回 ID_VAIN
     ID_TYPE get_plug_twin_node(ID_TYPE plugid);
     // 双半矩阵半环形接触器分组基址（1 起）：0左线环 1左对径 2左矩阵矩阵 3左矩阵线环

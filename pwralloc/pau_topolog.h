@@ -40,6 +40,7 @@ ID_TYPE diagonal_contactor_of_ring_node(ID_TYPE ring_node);
 void clear_parent(void);
 void set_parent(ID_TYPE node, ID_TYPE parentNode);
 bool graphconfig_Canaries_Twittering(void);
+bool is_ring_node(ID_TYPE nodeid);
 int find(int x);
 void unite(int x, int y);
 

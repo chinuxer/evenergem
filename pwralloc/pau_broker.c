@@ -37,21 +37,7 @@ int oprt_ratedpwr_per_module(int rated_pwr)
 
     return g_rated_pwr_per_module;
 }
-// 每类接触器的带载电流上限 (A)，0 表示不限流
-static size_t g_contactor_limit_amps[CONTACTOR_TYPE_COUNT] IN_PAU_RAM_SECTION = {0};
-// 数组初始化阶段暂存的拓扑类型（TOPOLOGY_TYPE 尚未就绪时使用）
-static TOPOTYPE g_building_topology = FullMatrix;
-void set_contactor_type_limit(CONTACTOR_TYPE type, size_t amps)
-{
-    if (type < CONTACTOR_TYPE_COUNT)
-    {
-        g_contactor_limit_amps[type] = amps;
-    }
-}
-size_t get_contactor_type_limit(CONTACTOR_TYPE type)
-{
-    return (type < CONTACTOR_TYPE_COUNT) ? g_contactor_limit_amps[type] : 0;
-}
+
 CONTACTOR_TYPE contactor_type(ID_TYPE contactorid)
 {
     if (!ASSERT_CONTACTOR_ID(contactorid))
@@ -107,18 +93,7 @@ size_t node_current_amps(ID_TYPE nodeid)
     }
     return refer_Node_Extracted(nodeid)->power_available * NODE_AMPS_PER_MODULE / UNITPWR_MAX;
 }
-static void (*g_ui_log_sink)(const char *msg) = NULL;
-void pau_set_ui_log_sink(void (*sink)(const char *msg))
-{
-    g_ui_log_sink = sink;
-}
-void pau_ui_log(const char *msg)
-{
-    if (NULL != g_ui_log_sink)
-    {
-        g_ui_log_sink(msg);
-    }
-}
+
 ID_TYPE get_plug_twin_node(ID_TYPE plugid)
 {
     if (!ASSERT_TOPOTYPE_DUAL_SEMIMATRIX || !ASSERT_PLUG_ID(plugid))
@@ -314,7 +289,7 @@ static void Alloc_ContactorsArray_Init(void *const ptr, size_t n)
     p->front_canary = FRONT_MAGICWORD;
 
     // 双半矩阵半环形：左右两个 (线环+矩阵) 子图
-    if (DualSemiHybrid == g_building_topology)
+    if (DualHybrid == TOPOLOGY_TYPE)
     {
         ID_TYPE R = NODE_MAX / 3; /* 单侧线环节点数 */
         ID_TYPE H = R / 2;        /* 单侧矩阵节点数 */
@@ -439,18 +414,18 @@ bool database_building(TOPOTYPE topology, size_t nodes_num, size_t plugs_num)
     } while (0);
 
     // 数组初始化阶段尚未设置 TOPOLOGY_TYPE，用该全局暂存当前拓扑供各 Init 函数判断
-    g_building_topology = topology;
+    TOPOLOGY_TYPE = topology;
 
     size_t Nodes_varonstack = nodes_num;
     size_t Plugs_varonstack = plugs_num;
     size_t Contactors_varonstack = 2 * nodes_num;
     size_t ReqSettler_varonstack = Plugs_varonstack;
-    size_t MatrixNodes_varonstack = (SemiHybrid == topology || DualSemiHybrid == topology) ? nodes_num / 2 : 0;
+    size_t MatrixNodes_varonstack = (SemiHybrid == topology || DualHybrid == topology) ? nodes_num / 2 : 0;
     (void)pau_calloc(0, __func__);
     directedConfig_Init(nodes_num, Plugs_varonstack, MatrixNodes_varonstack, topology);
-    if (DualSemiHybrid == topology)
+    if (DualHybrid == topology)
     {
-        Nodes_varonstack = 3 * nodes_num;                                   // 左右两个 (线环+矩阵)
+        Nodes_varonstack = 3 * nodes_num; // 左右两个 (线环+矩阵)
         Contactors_varonstack = 4 * nodes_num + 2 * factorial(nodes_num / 2);
     }
     else if (SemiHybrid == topology)
@@ -461,7 +436,7 @@ bool database_building(TOPOTYPE topology, size_t nodes_num, size_t plugs_num)
     pau_printf("building database for topology %d, nodes=%d, plugs=%d contactors=%d\r\n", topology, Nodes_varonstack, Plugs_varonstack, Contactors_varonstack);
     VARIABLE_LIST_PENDING_EXPANDED
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
-    TOPOLOGY_TYPE = topology;
+
     pau_alloc(0, RATE_SPAN);
     return true;
 }

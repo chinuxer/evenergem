@@ -34,7 +34,7 @@ void SimpleTopology::initialize(const TopologyConfig &config)
         node.pau_data = refer_Node_Extracted(i); // 关联到底层数据
         m_nodes.append(node);
     }
-    if (DualSemiHybrid == config.topotype)
+    if (DualHybrid == config.topotype)
     {
         int S = config.nodeCount * 3 / 2; // 单侧规模
         for (int i = 1; i <= config.nodeCount; i++)
@@ -53,7 +53,7 @@ void SimpleTopology::initialize(const TopologyConfig &config)
         node.pau_data = refer_Node_Extracted(node.id); // 关联到底层数据
         m_matrixnodes.append(node);
     }
-    if (DualSemiHybrid == config.topotype)
+    if (DualHybrid == config.topotype)
     {
         int S = config.nodeCount * 3 / 2;
         for (int i = 1; i <= config.nodeCount / 2; i++)
@@ -73,7 +73,7 @@ void SimpleTopology::initialize(const TopologyConfig &config)
         contactor.pau_data = refer_Contactor_Extracted(i); // 关联到底层数据
         m_contactors.append(contactor);
     }
-    if (SemiHybrid == config.topotype || DualSemiHybrid == config.topotype)
+    if (SemiHybrid == config.topotype || DualHybrid == config.topotype)
     {
         for (int i = 1 + (2 * config.nodeCount); i <= CONTACTOR_MAX; i++)
         {

@@ -40,15 +40,7 @@
 #include <cstddef>
 #include "pau_feeder.h"
 
-// 底层 pau_ui_log 回传：把业务日志（如接触器超限）推送到右侧操作日志
 static MainWindow *g_mainWindow = nullptr;
-static void uiLogSink(const char *msg)
-{
-    if (g_mainWindow)
-    {
-        g_mainWindow->appendOperationLog(QString::fromUtf8(msg));
-    }
-}
 
 static QColor makeDisabledColor(const QColor &base)
 {
@@ -158,7 +150,7 @@ QString MainWindow::contactorDisplayId(int contactorId)
     int R = config.nodeCount;
     int H = R / 2;
     int M = H * (H - 1) / 2;
-    if (DualSemiHybrid == m_topologyType)
+    if (DualHybrid == m_topologyType)
     {
         // 组顺序：左线环、左对径、左矩阵矩阵、左矩阵线环、右线环、右对径、右矩阵矩阵、右矩阵线环
         int counts[8] = {R, R, M, H, R, R, M, H};
@@ -484,7 +476,6 @@ MainWindow::MainWindow(TOPOTYPE topologyType, QWidget *parent)
     ui->setupUi(this);
 
     g_mainWindow = this;
-    pau_set_ui_log_sink(uiLogSink);
 
     QGroupBox *modeGroup = new QGroupBox("控制模式", this);
     modeGroup->setStyleSheet(
@@ -757,7 +748,7 @@ void MainWindow::onApplyConfigClicked()
     {
         totalNodes = nodeCount * 3 / 2; // 线环节点 + 矩阵节点
     }
-    else if (DualSemiHybrid == m_topologyType)
+    else if (DualHybrid == m_topologyType)
     {
         totalNodes = nodeCount * 3; // 左右两个 (线环 + 矩阵)，每个 R + R/2
     }
@@ -815,7 +806,7 @@ void MainWindow::onApplyConfigClicked()
     config.unitPower = unitPower;
     config.circleRadius = 200.0;
     config.center = QPointF(300, (SemiHybrid == m_topologyType) ? 500 : 300);
-    if (DualSemiHybrid == m_topologyType)
+    if (DualHybrid == m_topologyType)
     {
         config.center = QPointF(250, 500); // 左侧子图圆心；右侧由 calculateNodePosition 偏移
     }
@@ -824,7 +815,7 @@ void MainWindow::onApplyConfigClicked()
     m_topology->initialize(config);
 
     // 更新节点列表（用于手动选择）
-    int nodelist_size = (SemiHybrid == m_topologyType || DualSemiHybrid == m_topologyType) ? totalNodes : nodeCount;
+    int nodelist_size = (SemiHybrid == m_topologyType || DualHybrid == m_topologyType) ? totalNodes : nodeCount;
     ui->nodeListWidget->clear();
     ui->nodeListWidget->addItem("点击节点选择");
     for (int i = 1; i <= nodelist_size; i++)
@@ -1126,7 +1117,7 @@ void MainWindow::setupGraphicsScene()
     }
 
     // 创建环形接触器图形项
-    if (DualSemiHybrid != m_topologyType)
+    if (DualHybrid != m_topologyType)
     {
         m_contactorItems.resize(2 * nodes.size());
         for (int i = 0; i < 2 * nodes.size(); i++)
@@ -1406,7 +1397,7 @@ void MainWindow::setupGraphicsScene()
     }
 
     // 双半矩阵半环形：左右两个 (线环+矩阵) 子图，矩阵为被斜线分割的三角形排布（与半矩阵半环形一致）
-    if (DualSemiHybrid == m_topologyType)
+    if (DualHybrid == m_topologyType)
     {
         int R = config.nodeCount;
         int H = R / 2;
@@ -1625,7 +1616,7 @@ void MainWindow::setupGraphicsScene()
         m_pileConnections[i] = connLine;
 
         // 双半矩阵半环形：同一充电桩在右图也画一份（环绕右线环，连到镜像直连节点）
-        if (DualSemiHybrid == m_topologyType)
+        if (DualHybrid == m_topologyType)
         {
             ID_TYPE twin = get_plug_twin_node(pile.id);
             if (twin > 0 && twin <= NODE_MAX)
@@ -1844,7 +1835,7 @@ void MainWindow::updateGraphics()
             }
         }
     }
-    if (DualSemiHybrid == m_topologyType)
+    if (DualHybrid == m_topologyType)
     {
         // 矩阵节点着色
         for (int i = 0; i < matrixnodes.size(); i++)
@@ -1996,7 +1987,7 @@ void MainWindow::updatePileComboBox()
 QPointF MainWindow::calculateNodePosition(int nodeId)
 {
     const auto &config = m_topology->getConfig();
-    if (DualSemiHybrid == m_topologyType)
+    if (DualHybrid == m_topologyType)
     {
         int R = config.nodeCount;
         int S = R * 3 / 2; // 单侧规模
@@ -2473,8 +2464,8 @@ void MainWindow::onTelnetConnected()
         case SemiHybrid:
             topoType = "SemiHybrid";
             break;
-        case DualSemiHybrid:
-            topoType = "DualSemiHybrid";
+        case DualHybrid:
+            topoType = "DualHybrid";
             break;
         default:
             topoType = "Unknown";
@@ -2560,8 +2551,8 @@ void MainWindow::onExternalTopologyState(int nodeCount, int pileCount,
     case SemiHybrid:
         currentTopoStr = "SemiHybrid";
         break;
-    case DualSemiHybrid:
-        currentTopoStr = "DualSemiHybrid";
+    case DualHybrid:
+        currentTopoStr = "DualHybrid";
         break;
     default:
         currentTopoStr = "Unknown";
@@ -2914,7 +2905,7 @@ void MainWindow::showContactorLoadDialog()
 {
     // 获取当前拓扑类型
     TOPOTYPE topoType = m_topologyType;
-    bool isSemiHybrid = (SemiHybrid == topoType || DualSemiHybrid == topoType);
+    bool isSemiHybrid = (SemiHybrid == topoType || DualHybrid == topoType);
     bool isRing = (CakraWheel == topoType);
     bool isFullMatrix = (FullMatrix == topoType);
 
@@ -3000,7 +2991,7 @@ void MainWindow::showContactorLoadDialog()
     case SemiHybrid:
         topoName = "半矩阵半环形结构";
         break;
-    case DualSemiHybrid:
+    case DualHybrid:
         topoName = "双半矩阵半环形结构";
         break;
     default:

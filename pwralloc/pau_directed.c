@@ -38,9 +38,21 @@ struct
     int plugCount;
     int tot; /* 邻接表已用边数（前向星，有向边） */
     int parent[MAXNODES_MEM_LMT + 1];
+    size_t g_contactor_limit_amps[CONTACTOR_TYPE_COUNT]; // 每类接触器的带载电流上限 (A)，0 表示不限流
     size_t rear_canary;
 } *pconfig_graph IN_PAU_RAM_SECTION = NULL;
 
+void set_contactor_type_limit(CONTACTOR_TYPE type, size_t amps)
+{
+    if (type < CONTACTOR_TYPE_COUNT)
+    {
+        pconfig_graph->g_contactor_limit_amps[type] = amps;
+    }
+}
+size_t get_contactor_type_limit(CONTACTOR_TYPE type)
+{
+    return (type < CONTACTOR_TYPE_COUNT) ? pconfig_graph->g_contactor_limit_amps[type] : 0;
+}
 static inline void add_edge(int u, int v)
 {
     if (pconfig_graph->tot >= MAX_GRAPH_DIRECTED_EDGES)
@@ -68,9 +80,9 @@ static void build_subgraph(int ring_base, int matrix_base, int R, int H)
     for (int u = 1; u <= R; ++u)
     {
         int ru = ring_base + u;
-        int v1 = ring_base + (u == 1 ? R : u - 1);                 /* 左邻居 */
-        int v2 = ring_base + (u == R ? 1 : u + 1);                 /* 右邻居 */
-        int v3 = ring_base + (u > R / 2 ? u - R / 2 : u + R / 2);  /* 对径 */
+        int v1 = ring_base + (u == 1 ? R : u - 1);                /* 左邻居 */
+        int v2 = ring_base + (u == R ? 1 : u + 1);                /* 右邻居 */
+        int v3 = ring_base + (u > R / 2 ? u - R / 2 : u + R / 2); /* 对径 */
         add_edge(ru, v1);
         add_edge(v1, ru);
         add_edge(ru, v2);
@@ -80,9 +92,9 @@ static void build_subgraph(int ring_base, int matrix_base, int R, int H)
     }
     for (int k = 1; k <= H; ++k)
     {
-        int m = matrix_base + k;                                    /* 矩阵节点 */
-        int alpha = ring_base + k;                                  /* 下端点 k */
-        int beta = ring_base + (k + H > R ? k + H - R : k + H);     /* 下端点 k+H */
+        int m = matrix_base + k;                                /* 矩阵节点 */
+        int alpha = ring_base + k;                              /* 下端点 k */
+        int beta = ring_base + (k + H > R ? k + H - R : k + H); /* 下端点 k+H */
         add_edge(m, alpha);
         add_edge(alpha, m);
         add_edge(m, beta);
@@ -105,7 +117,7 @@ void build_graph(void)
     memset(pconfig_graph->head, 0, sizeof(pconfig_graph->head));
     if (pconfig_graph->dual)
     {
-        int S = n + h; /* 单侧规模 */
+        int S = n + h;                  /* 单侧规模 */
         build_subgraph(0, n, n, h);     /* 左侧子图 */
         build_subgraph(S, S + n, n, h); /* 右侧子图 */
     }
@@ -266,7 +278,7 @@ void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes, TOP
         return;
     }
     int total = nodes + matrix_nodes;
-    if (DualSemiHybrid == topology)
+    if (DualHybrid == topology)
     {
         total = 2 * (nodes + matrix_nodes);
     }
@@ -288,7 +300,7 @@ void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes, TOP
     pconfig_graph->nodeCount = nodes;
     pconfig_graph->matrixCount = matrix_nodes;
     pconfig_graph->totalCount = total;
-    pconfig_graph->dual = (DualSemiHybrid == topology);
+    pconfig_graph->dual = (DualHybrid == topology);
     pconfig_graph->plugCount = plugs;
     pconfig_graph->front_canary = FRONT_MAGICWORD;
     pconfig_graph->rear_canary = REAR_MAGICWORD;

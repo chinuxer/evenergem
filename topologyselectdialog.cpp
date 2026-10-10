@@ -27,7 +27,7 @@ TopologySelectDialog::TopologySelectDialog(QWidget *parent)
     QRadioButton *hybridBtn = new QRadioButton("半矩阵半环形", this);
     QRadioButton *dualHybridBtn = new QRadioButton("双半矩阵半环形", this);
 
-       fullMatrixBtn->setStyleSheet(lightBlueStyle);
+    fullMatrixBtn->setStyleSheet(lightBlueStyle);
     ringBtn->setStyleSheet(lightBlueStyle);
     hybridBtn->setStyleSheet(lightBlueStyle);
     dualHybridBtn->setStyleSheet(lightBlueStyle);
@@ -39,7 +39,7 @@ TopologySelectDialog::TopologySelectDialog(QWidget *parent)
     m_buttonGroup->addButton(fullMatrixBtn, FullMatrix);
     m_buttonGroup->addButton(ringBtn, CakraWheel);
     m_buttonGroup->addButton(hybridBtn, SemiHybrid);
-    m_buttonGroup->addButton(dualHybridBtn, DualSemiHybrid);
+    m_buttonGroup->addButton(dualHybridBtn, DualHybrid);
 
     connect(m_buttonGroup, QOverload<int>::of(&QButtonGroup::buttonClicked),
             this, &TopologySelectDialog::onButtonClicked);

@@ -3,6 +3,7 @@
 #include "pau_broker.h"
 
 #define POLICY_DISSABLEDNODES_BYPASS
+#define POLICY_PREFERENCIRCLE_NODES
 #define WEIGHT_HIERARCHY 10
 #define WEIGHT_1 1
 #define WEIGHT_2 WEIGHT_HIERARCHY *WEIGHT_1
@@ -22,7 +23,6 @@ enum Senario
     SENARIO_INHERIT,
     SENARIO_ACQUIRE,
     SENARIO_RELEASE,
-    SENARIO_SUBSIDY,
     SENARIO_MATRICE
 };
 typedef struct

@@ -199,44 +199,6 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
 
     switch (senario)
     {
-    case SENARIO_SUBSIDY:
-    {
-        ID_TYPE lower_alpha = get_neighbor_lower_alpha(nodeid);
-        ID_TYPE lower_beta = get_neighbor_lower_beta(nodeid);
-        bool lower_alpha_atlist = plug_allocated_contain_node(plugid, lower_alpha);
-        bool lower_beta_atlist = plug_allocated_contain_node(plugid, lower_beta);
-        score += WEIGHT_6 * (get_node_chargingplugid(nodeid) > ID_VAIN ? 0 : 1);
-        score += WEIGHT_5 * (lower_alpha_atlist ? 1 : 0);
-        score += WEIGHT_5 * (lower_beta_atlist ? 1 : 0);
-        if (have_plug_occupied_matrixnode(plugid))
-        {
-            score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(lower_alpha) ? 1 : 0);
-            score += WEIGHT_4 * (ID_VAIN == get_node_chargingplugid(lower_beta) ? 1 : 0);
-        }
-        if (WEIGHT_5 + WEIGHT_6 <= score)
-        {
-            ID_TYPE connected_nodeid = get_plug_connectednode(plugid);
-
-            int hops_dist = 0;
-            if (lower_alpha_atlist)
-            {
-                hops_dist = get_hops_occupied(connected_nodeid, lower_alpha, plugid);
-            }
-            if (lower_beta_atlist)
-            {
-                hops_dist = get_hops_occupied(connected_nodeid, lower_beta, plugid);
-            }
-            score += WEIGHT_2 * (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - hops_dist);
-        }
-        else
-        {
-            ID_TYPE plug_of_node = get_node_chargingplugid(nodeid);
-            score += WEIGHT_2 * (get_plug_allocated_cnt_excircle(plug_of_node));
-            score += WEIGHT_4 * (0 < get_plug_allocated_cnt_excircle(plugid) ? 1 : 0);
-        }
-
-        return score;
-    }
     case SENARIO_INHERIT:
     {
         score += WEIGHT_1 * (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1 - get_plug_chargingnodes_cnt(neighbor_plugid));
@@ -291,11 +253,15 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         // 直连节点/镜像直连节点自身没有已占邻居(hops<0)，但它是 0 级，需按 0 级计距离分；
         // 其余 hops<0 表示与本桩不直接相邻，不给距离分，避免其越过及格线被选中
         int level = (hops < 0 && 0 == get_dist(nodeid)) ? 0 : hops;
-        score = WEIGHT_3 * (level < 0 ? 0 : (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1 - level));
+        score = WEIGHT_2 * (level < 0 ? 0 : (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1 - level));
         score += WEIGHT_1 * (occupied_count_neighbors < 3 ? (3 - occupied_count_neighbors) : 0);
         score += WEIGHT_4 * (module_adaptive);
         score += WEIGHT_5 * (hops != -1 ? 1 : 0);
-        score += WEIGHT_5 * (nodeid == get_plug_connectednode(plugid) && 0 == get_dist(nodeid) ? 1 : 0);
+#ifdef POLICY_PREFERENCIRCLE_NODES
+
+        score += WEIGHT_5 * (is_ring_node(nodeid) && hops != -1 ? 1 : 0); // 优先线环内的节点,以及需要通过matrix接触器勾连的线环内节点
+#endif
+        score += WEIGHT_5 * ((get_plug_twin_node(plugid) == nodeid || nodeid == get_plug_connectednode(plugid)) && 0 == get_dist(nodeid) ? WEIGHT_HIERARCHY : 0);
         score = ID_VAIN < get_node_chargingplugid(nodeid) ? 0 : score; // 如果是占用的节点,并且优先级大于等于本桩的优先级
         score = is_node_pseudocycledon(nodeid) ? 0 : score;
 #ifdef POLICY_DISSABLEDNODES_BYPASS
