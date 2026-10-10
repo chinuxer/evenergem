@@ -15,8 +15,6 @@ extern "C"
     ID_TYPE restrictPower(size_t limitedPower);
     bool hear_Canaries_Twittering(void);
     bool set_node_availability(ID_TYPE node_id);
-    void push_NodetoPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid);
-    void pull_NodefromPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid);
     size_t get_system_gross_power(void);
     size_t get_system_outputting_power(void);
     int requestpwr_limited_matching(ID_TYPE, int);

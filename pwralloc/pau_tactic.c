@@ -210,7 +210,7 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         score += WEIGHT_4 * (shortage % WEIGHT_HIERARCHY);
         score += WEIGHT_5 * (PRIOR_ADHOC < get_plug_priority(neighbor_plugid) && 0 < shortage ? 1 : 0);
         score = (plugid == neighbor_plugid) ? 0 : score; // 如果邻居节点所属充电桩与当前充电桩相同,则得分为0,不进行继承
-        score = is_node_pseudocycledon(neighbor_nodeid) ? 0 : score;
+
         return score;
     }
     case SENARIO_ACQUIRE:
@@ -234,15 +234,9 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
             {
                 break;
             }
-            if (get_node_chargingplugid(neighbor_nodeid) == plugid && !is_node_pseudocycledon(neighbor_nodeid)) // 如果是邻接点(但限于ana_katabatic_flow接触器限流pseudocyclis点不能继续发展新节点)则比较该点到直连点的距离
+            if (get_node_chargingplugid(neighbor_nodeid) == plugid)
             {
                 hops = get_dist(nodeid);
-                // 如果遇到自己plug的pseudocyclis点则同化为encirce节点,
-                if (is_node_pseudocycledon(nodeid) && get_node_chargingplugid(nodeid) == plugid)
-                {
-                    hops = -1;
-                    recover_node_pseudocycledon(plugid, nodeid);
-                }
             }
             else if (get_node_chargingplugid(neighbor_nodeid) > ID_VAIN)
             {
@@ -263,7 +257,6 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
 #endif
         score += WEIGHT_5 * ((get_plug_twin_node(plugid) == nodeid || nodeid == get_plug_connectednode(plugid)) && 0 == get_dist(nodeid) ? WEIGHT_HIERARCHY : 0);
         score = ID_VAIN < get_node_chargingplugid(nodeid) ? 0 : score; // 如果是占用的节点,并且优先级大于等于本桩的优先级
-        score = is_node_pseudocycledon(nodeid) ? 0 : score;
 #ifdef POLICY_DISSABLEDNODES_BYPASS
         score = get_node_state(nodeid) != NODE_IDLEFREE ? 0 : score;
 #endif

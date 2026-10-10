@@ -206,35 +206,6 @@ bool is_furthernode_pathself(ID_TYPE plugid, ID_TYPE nodeid_alpha, ID_TYPE nodei
     return ((hops_beta - hops_alpha) == hops_tween);
 }
 
-void expseudous_eisalethes(struct Alloc_plugObj *pplug)
-{
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        if (!is_node_pseudocycledon(nodeid))
-        {
-            continue;
-        }
-        ID_TYPE neighbors[MAX_NODE_NEIGHBORS] = {0};
-        get_neighbors(nodeid, neighbors);
-        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
-        {
-            if (!ASSERT_NODE_ID(neighbors[i]))
-            {
-                continue;
-            }
-            struct Alloc_nodeObj *pneighbornode = refer_Node_Extracted(neighbors[i]);
-            if (pplug->id != pneighbornode->plug_id)
-            {
-                continue;
-            }
-            if (pneighbornode->pseudocycledon)
-            {
-                continue;
-            }
-            recover_node_pseudocycledon(pplug->id, nodeid);
-        }
-    }
-}
 /**
  * @brief 更新某个充电桩相关的接触器状态：构建无环生成树
  *
@@ -453,10 +424,7 @@ static bool build_spanning_tree(PAU_Vector *nodeset, ID_TYPE root, ID_TYPE twin,
             {
                 continue;
             }
-            if (refer_Node_Extracted(v)->pseudocycledon)
-            {
-                continue;
-            }
+
             if (dist[v] == -1)
             {
                 dist[v] = dist[u] + 1;
@@ -486,7 +454,7 @@ static bool build_spanning_tree(PAU_Vector *nodeset, ID_TYPE root, ID_TYPE twin,
 
     PAU_VECTOR_FOREACH(node, nodeset)
     {
-        if (refer_Node_Extracted(node)->pseudocycledon || dist[node] < 0)
+        if (dist[node] < 0)
         {
             continue;
         }
@@ -495,7 +463,7 @@ static bool build_spanning_tree(PAU_Vector *nodeset, ID_TYPE root, ID_TYPE twin,
         for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             ID_TYPE nbr = neighbors[i];
-            if (!ASSERT_NODE_ID(nbr) || refer_Node_Extracted(nbr)->pseudocycledon || dist[nbr] < 0)
+            if (!ASSERT_NODE_ID(nbr) || dist[nbr] < 0)
             {
                 continue;
             }
@@ -598,7 +566,7 @@ static void acyclic_tree_building(struct Alloc_plugObj *pplug)
     }
     PAU_VECTOR_FOREACH(node, pplug->allocatedNodes)
     {
-        if (node == root || node == get_plug_twin_node(pplug->id) || refer_Node_Extracted(node)->pseudocycledon)
+        if (node == root || node == get_plug_twin_node(pplug->id))
         {
             continue;
         }
@@ -643,10 +611,6 @@ static void accumulate_plug_loads(ID_TYPE plugid, ID_TYPE candidate, size_t *loa
 
     PAU_VECTOR_FOREACH(node, nodeset)
     {
-        if (refer_Node_Extracted(node)->pseudocycledon)
-        {
-            continue;
-        }
         size_t cur = node_current_amps(node);
         direct_loads[plugid] += cur;
 
@@ -810,8 +774,7 @@ void updateContactorStates(ID_TYPE plugid, ID_TYPE nodeid)
             }
         }
     }
-    //
-    expseudous_eisalethes(pplug);
+
     // 半矩阵接触器为多桩共享，先统一断开，再按各桩生成树重新闭合
     if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX)
     {
@@ -852,7 +815,6 @@ static void pull_NodefromPlug(ID_TYPE nodeid, ID_TYPE plugid)
     struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
     pnode->plug_id = ID_VAIN;
     pnode->priority = PRIOR_VAIN;
-    pnode->pseudocycledon = false;
     pau_vector_remove(pplug->allocatedNodes, nodeid); // 从在充节点名单中除名该节点
     OUTPUTPWR -= pnode->power_available;
     OUTPUTPWR = OUTPUTPWR < 0 ? 0 : OUTPUTPWR;
@@ -902,71 +864,6 @@ static void push_NodetoPlug(ID_TYPE nodeid, ID_TYPE plugid)
     }
 
     updateContactorStates(plugid, 0);
-}
-void push_NodetoPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid)
-{
-    if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid))
-    {
-        return;
-    }
-    struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-    if (pnode->plug_id != ID_VAIN)
-    {
-        return;
-    }
-
-    // 安插节点,更新数据
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    pnode->plug_id = plugid;
-    pnode->priority = pplug->priority;
-    pnode->pseudocycledon = true;
-    pau_vector_append(pplug->allocatedNodes, nodeid);
-    pau_printf(" allocate pseudocyclose_node %d to plug %d\r\n", nodeid, plugid);
-    if (pnode->state == NODE_IDLEFREE)
-    {
-        pnode->state = NODE_OCCUPIED;
-    }
-    if (pnode->state == NODE_DISABLED)
-    {
-        pnode->state = NODE_OUTORDER;
-    }
-}
-
-void pull_NodefromPlug_pseudocyclose(ID_TYPE nodeid, ID_TYPE plugid)
-{
-    if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid))
-    {
-        return;
-    }
-
-    struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-
-    if (pnode->plug_id != plugid)
-    {
-        return;
-    }
-
-    // 释放节点,更新数据
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    pnode->plug_id = ID_VAIN;
-    pnode->priority = PRIOR_VAIN;
-    pnode->pseudocycledon = false;
-    pau_vector_remove(pplug->allocatedNodes, nodeid); // 从在充节点名单中除名该节点
-    pau_printf(" release pseudocyclose node %d from plug %d\r\n", nodeid, plugid);
-    if (pnode->state == NODE_OCCUPIED)
-    {
-        pnode->state = NODE_IDLEFREE;
-    }
-    if (pnode->state == NODE_OUTORDER)
-    {
-        pnode->state = NODE_DISABLED;
-    }
-
-    if (0 == pau_vector_size(pplug->allocatedNodes))
-    {
-        pplug->state = PLUG_IDLE;
-        pplug->priority = PRIOR_VAIN;
-    }
 }
 
 static void pullout_further_nodes(ID_TYPE nodeid)
@@ -1168,11 +1065,6 @@ static bool reactive_tuning_encircle(ID_TYPE plugid)
             struct Alloc_nodeObj *pneighbor = refer_Node_Extracted(node_neighbors[i]);
             if (ID_VAIN < pneighbor->plug_id && pau_vector_contains(plugs_shovedover, pneighbor->plug_id))
             {
-                if (pneighbor->pseudocycledon)
-                {
-                    continue;
-                }
-
                 plugid_shovedover = pneighbor->plug_id;
                 nodeid_replacement = nodeid;
                 break;
@@ -1653,12 +1545,6 @@ static bool release_matrix_node(ID_TYPE plugid)
     PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
     {
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->pseudocycledon)
-        {
-            pull_NodefromPlug(nodeid, plugid);
-            update_plug_shortage_power(plugid);
-            return true;
-        }
     }
     PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
     {
@@ -1992,7 +1878,7 @@ FlowMap *flow_directioned(ID_TYPE plugid, FlowMap *pobject)
     /* 已分配的普通节点：找到父节点并解析接触器 */
     PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
     {
-        if (nodeid == root || nodeid == twin || is_node_pseudocycledon(nodeid))
+        if (nodeid == root || nodeid == twin)
         {
             continue;
         }
@@ -2007,7 +1893,7 @@ FlowMap *flow_directioned(ID_TYPE plugid, FlowMap *pobject)
         for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
         {
             ID_TYPE nbr = neighbors[i];
-            if (!ASSERT_NODE_ID(nbr) || is_node_pseudocycledon(nbr))
+            if (!ASSERT_NODE_ID(nbr))
             {
                 continue;
             }
@@ -2039,25 +1925,7 @@ FlowMap *flow_directioned(ID_TYPE plugid, FlowMap *pobject)
         }
     }
 
-    /* 伪环路节点：hops=100 排到最后，作为备用接入点 */
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        if (!is_node_pseudocycledon(nodeid))
-        {
-            continue;
-        }
-        if (index >= MAXNODES_MEM_LMT)
-        {
-            break;
-        }
-        pobject[index].direction = nodeid;
-        pobject[index].contactorid = nodeid + NODES_MAX_ENCIRCLE;
-        pobject[index].appendix = CONTACTOR_MAX - NODES_MAX_ENCIRCLE / 2 + (nodeid > NODES_MAX_ENCIRCLE / 2 ? nodeid - NODES_MAX_ENCIRCLE / 2 : nodeid);
-        pobject[index].hops = 100;
-        struct Alloc_contactorObj *pc = refer_Contactor_Extracted(pobject[index].appendix);
-        pobject[index].genogram = pc->node1;
-        index++;
-    }
+
 
     /* 按 hops 从小到大排序 */
     sort_flowmap_by_hops(pobject, index);
@@ -2118,14 +1986,4 @@ bool set_node_availability(ID_TYPE node_id)
         res = false;
     }
     return res;
-}
-
-void recover_node_pseudocycledon(ID_TYPE plugid, ID_TYPE nodeid)
-{
-    if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid))
-    {
-        return;
-    }
-    refer_Node_Extracted(nodeid)->pseudocycledon = false;
-    set_locked(plugid, nodeid);
 }

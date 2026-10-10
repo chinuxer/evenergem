@@ -102,7 +102,6 @@ void pau_log_printf(const char *fmt, ...);
         ID_TYPE id;
         ID_TYPE plug_id;
         PRIOR priority;
-        bool pseudocycledon;
         int power_available;
         NodeState state;
     };

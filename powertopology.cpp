@@ -283,7 +283,7 @@ void SimpleTopology::allocateNodeToPile(int nodeId, int pileId, bool emit_signal
         qWarning() << "无效的节点或充电桩ID:" << nodeId << pileId;
         return;
     }
-    ::push_NodetoPlug_pseudocyclose(nodeId, pileId);
+
     if (emit_signal)
     {
         emit topologyChanged();
@@ -298,7 +298,6 @@ void SimpleTopology::releaseNodeFromPile(int nodeId, int pileId, bool emit_signa
         qWarning() << "无效的节点或充电桩ID:" << nodeId << pileId;
         return;
     }
-    ::pull_NodefromPlug_pseudocyclose(nodeId, pileId);
     if (emit_signal)
     {
         emit topologyChanged();
