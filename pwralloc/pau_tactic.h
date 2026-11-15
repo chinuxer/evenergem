@@ -15,7 +15,10 @@
 #define WEIGHT_8 WEIGHT_HIERARCHY *WEIGHT_7
 #define WEIGHT_9 WEIGHT_HIERARCHY *WEIGHT_8
 #define WEIGHT_10 WEIGHT_HIERARCHY *WEIGHT_9
-
+#define PAU_MERGE_BUFFER_01KW 50                          /* 并机缓冲 5kW，0.1kW 单位 */
+#define PAU_MERGE_BUFFER (PAU_MERGE_BUFFER_01KW * 100.0f) /* 并机缓冲 5kW，W */
+#define DELAYMENT_POSTCHARGING (0xf0000000)
+#define DELAYMENT_POSTCHARGING_HYSTERESIS  (10*60)
 enum Senario
 {
     SENARIO_PREEMPT = 0,
@@ -42,6 +45,8 @@ ID_TYPE get_neighbor_lower_beta(ID_TYPE nodeid);
 int get_plug_chargingnodes_cnt(ID_TYPE plugid);
 size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighbor_plugid, ID_TYPE nodeid, ID_TYPE neighbor_nodeid);
 size_t get_plug_requiredPower(ID_TYPE plugid);
+size_t get_plug_ceilingPower(ID_TYPE plugid);
+void set_plug_ceilingPower(ID_TYPE plugid, size_t power);
 PRIOR get_plug_priority(ID_TYPE plugid);
 void set_plug_priority(ID_TYPE plugid, PRIOR priority);
 size_t get_plug_allocated_cnt(ID_TYPE plugid);
@@ -52,10 +57,12 @@ ID_TYPE get_plug_connectednode(ID_TYPE plugid);
 
 void update_plug_shortage_power(ID_TYPE plugid);
 int get_plug_shortage(ID_TYPE plugid);
+int get_plug_liveTargetPower(ID_TYPE plugid);
+int get_plug_liveShortage(ID_TYPE plugid);
 void print_outcomes(ID_TYPE plugid);
 FlowMap *flow_directioned(ID_TYPE, FlowMap *);
 int get_plug_charging_power(ID_TYPE plugid);
-
+bool underperformer_fallshort(ID_TYPE plugid);
 bool get_plug_refresh_flag(ID_TYPE plugid);
 void set_plug_refresh_flag(ID_TYPE plugid, bool val);
 bool get_plug_sequent_flag(ID_TYPE plugid);
@@ -63,7 +70,7 @@ void set_plug_sequent_flag(ID_TYPE plugid, bool val);
 
 PRIOR get_node_priority(ID_TYPE nodeid);
 int get_node_module_cnt(ID_TYPE nodeid);
-
+void cleanup_plug_data(ID_TYPE plugid);
 int get_node_available_power(ID_TYPE nodeid);
 NodeState get_node_state(ID_TYPE nodeid);
 PlugState get_plug_state(ID_TYPE plugid);
@@ -72,7 +79,6 @@ size_t get_plug_allocated_cnt_excircle(ID_TYPE plugid);
 bool route_authentichanged(ID_TYPE plugid, St_PolicyTargetResult *outcome, bool (*check_freenode_func)(ID_TYPE));
 bool have_plug_occupied_matrixnode(ID_TYPE plugid);
 enum METABOLIN metabole_alethes(unsigned char nodeid, unsigned char relayid, FlowMap *pflow_map);
-
 #ifdef __cplusplus
 extern "C"
 {

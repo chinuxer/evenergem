@@ -102,7 +102,7 @@ void pau_log_printf(const char *fmt, ...);
         ID_TYPE id;
         ID_TYPE plug_id;
         PRIOR priority;
-        int power_available;
+        int power_available;        
         NodeState state;
     };
 
@@ -113,6 +113,7 @@ void pau_log_printf(const char *fmt, ...);
         PlugState state;       // 充电桩状态
         ID_TYPE connectedNode; // 直连的节点ID
         size_t requiredPower;  // 需求功率 (kW)
+        size_t power_ceiling;  // BCP最大功率 (0.1kW)，0=未设置
         int shortage;          // 需求欠额节点数
         bool refresh;
         bool sequent;
@@ -188,14 +189,12 @@ void pau_log_printf(const char *fmt, ...);
 #define VAR_NAME(x) gp##x##Array
 #define VAR_TYPE(x) Alloc_##x##Array
 // cstat +DEFINE-hash-multiple
-#ifdef __IMPORT_GLOBALVAR__
-    TOPOTYPE g_building_topology IN_PAU_RAM_SECTION = FullMatrix;
+#ifdef __IMPORT_GLOBALVAR__    
 #define CONTEXT_EXPANDER_PROJ_GLOBAL(x) VAR_TYPE(x) * VAR_NAME(x) IN_PAU_RAM_SECTION = NULL;
     // here，Defined PAU's only 7 global variables (gpxxxArray) via metaprogramming templates
     VARIABLE_LIST_PENDING_EXPANDED
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
 #else
-extern TOPOTYPE g_building_topology;
 #define CONTEXT_EXPANDER_PROJ_GLOBAL(x) extern VAR_TYPE(x) * VAR_NAME(x);
 VARIABLE_LIST_PENDING_EXPANDED
 #undef CONTEXT_EXPANDER_PROJ_GLOBAL
@@ -205,7 +204,8 @@ VARIABLE_LIST_PENDING_EXPANDED
 #define NODE_MAX (gpNodesArray->length)
 #define CONTACTOR_MAX (gpContactorsArray->length)
 #define UNITPWR_MAX (gpNodesArray->unitpower)
-#define TOPOLOGY_TYPE (g_building_topology)
+
+#define TOPOLOGY_TYPE (get_topology())
 #define NODES_MAX_ENCIRCLE (gpNodesArray->circulo)
 #define OUTPUTPWR (gpPlugsArray->outputpwr)
 #define LIMITEDPWR (gpPlugsArray->limitedpwr)
@@ -269,7 +269,7 @@ VARIABLE_LIST_PENDING_EXPANDED
 
         else if (RATE_SPAN == span)
         {
-            pau_printf("PAU_HEAP_USAGE: %.2f%% %p/%p\r\n", (float)(*custom_mem_offset) / CUSTOM_HEAP_SIZE * 100, *custom_mem_offset, CUSTOM_HEAP_SIZE);
+            pau_printf("PAU_HEAP_USAGE: %.2f%% %p/%p\r\n", (double)(*custom_mem_offset) / CUSTOM_HEAP_SIZE * 100, *custom_mem_offset, CUSTOM_HEAP_SIZE);
         }
         return NULL;
     }
@@ -343,8 +343,9 @@ struct Alloc_contactorObj *refer_Contactor_Extracted(ID_TYPE contactor);
 struct Tactic_ReqCurrentObj *refer_ReqSettler_Extracted(ID_TYPE plug);
 #endif // __IMPORT_PAU_DBFUNC__
     void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes, TOPOTYPE topology);
+    TOPOTYPE get_topology(void);
     CONTACTOR_TYPE contactor_type(ID_TYPE contactorid);
-    size_t node_current_amps(ID_TYPE nodeid);
+    
     void set_contactor_type_limit(CONTACTOR_TYPE type, size_t amps);
     size_t get_contactor_type_limit(CONTACTOR_TYPE type);
     // 双半矩阵半环形：返回充电桩右图镜像直连节点，非双结构返回 ID_VAIN

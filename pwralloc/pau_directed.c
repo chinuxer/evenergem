@@ -8,6 +8,9 @@
  * @brief   线环节点抽象成有向图,实现基于广度优先搜索的资源分配算法
  * @note    !如无十足把握,非必要不修改本文件
  * @history 2026-04-27 YBA40320 创建;2026-05-19 YBA40320 从模拟机移植到A2605线环1500kW工程
+ *          2026-07-25 YBA40320 改善广度优先搜索算法,邻接表建树策略更新,减少接触器负载;
+ *          2026-08-15 YBA40320 兼容半矩阵拓扑;
+            2026-09-20 YBA40320 兼容双线环双矩阵拓扑;
  * @details
  *
  *****************************************************************************/
@@ -22,6 +25,7 @@
 struct
 {
     size_t front_canary;
+    TOPOTYPE topology;
     int head[MAXNODES_MEM_LMT + 1];
     int nxt[MAX_GRAPH_DIRECTED_EDGES];
     int to[MAX_GRAPH_DIRECTED_EDGES];
@@ -297,6 +301,7 @@ void directedConfig_Init(ID_TYPE nodes, ID_TYPE plugs, ID_TYPE matrix_nodes, TOP
         return;
     }
     pau_printf("PAU_DIRECTED_CONFIG_INIT: %x\n", sizeof(*pconfig_graph));
+    pconfig_graph->topology = topology;
     pconfig_graph->nodeCount = nodes;
     pconfig_graph->matrixCount = matrix_nodes;
     pconfig_graph->totalCount = total;
@@ -380,4 +385,9 @@ void set_parent(ID_TYPE node, ID_TYPE parentNode)
 bool graphconfig_Canaries_Twittering(void)
 {
     return (pconfig_graph->front_canary == FRONT_MAGICWORD && pconfig_graph->rear_canary == REAR_MAGICWORD);
+}
+
+TOPOTYPE get_topology(void)
+{
+    return pconfig_graph->topology;
 }

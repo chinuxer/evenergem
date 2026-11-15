@@ -2087,7 +2087,7 @@ void MainWindow::showAboutDialog()
     titleLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(titleLabel);
 
-    QLabel *versionLabel = new QLabel(tr("版本：1.1.0"));
+    QLabel *versionLabel = new QLabel(tr("版本：1.1.1"));
     versionLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(versionLabel);
 

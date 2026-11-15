@@ -578,7 +578,22 @@ static void acyclic_tree_building(struct Alloc_plugObj *pplug)
         close_edge_contactors(node, p);
     }
 }
+static size_t get_node_current_amps(ID_TYPE plugid, ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid) || !ASSERT_PLUG_ID(plugid) || 0 == UNITPWR_MAX)
+    {
+        return 0;
+    }
 
+    size_t amps = 0;
+
+#if defined(STM32F407xx)
+    amps = get_node_available_current(nodeid);
+#else
+    amps = refer_Node_Extracted(nodeid)->power_available * NODE_AMPS_PER_MODULE / UNITPWR_MAX;
+#endif
+    return amps;
+}
 /*
  * 把充电桩（可选试分配 candidate）的功率潮流累加到 loads[] 与 direct_loads[] 上。
  * 每个节点的电流沿其父链加到途经的每个接触器上；直连接触器累加该桩全部节点电流。
@@ -608,10 +623,16 @@ static void accumulate_plug_loads(ID_TYPE plugid, ID_TYPE candidate, size_t *loa
         pau_vector_destroy(nodeset);
         return;
     }
-
+    // 打印parent数组
+    pau_printf("parent %d: ", plugid);
+    for (int i = 1; i <= 18; i++)
+    {
+        pau_printf("[%d]%d ", i, parent[i]);
+    }
+    pau_printf("\n");
     PAU_VECTOR_FOREACH(node, nodeset)
     {
-        size_t cur = node_current_amps(node);
+        size_t cur = get_node_current_amps(plugid, node);
         direct_loads[plugid] += cur;
 
         ID_TYPE walk = node;
@@ -696,12 +717,12 @@ static void contactor_display_id(ID_TYPE contactorid, char *out, size_t out_size
 /*
  * @brief 全局超限检测：汇总所有在充充电桩（含试分配）的功率潮流负载，检查是否有接触器超限。
  *
- * 依据 feat.txt 的接触器带载约束，从全局视角统计每个接触器承载的电流（多桩共享的
+ * 依据接触器带载约束，从全局视角统计每个接触器承载的电流（多桩共享的
  * 矩阵接触器会跨桩叠加），再与对应类型限流值比较。
  *
  * @param candidate_plug 被分配的充电桩
  * @param candidate_node 试分配节点（ID_VAIN 表示不试分配，仅校验现状）
- * @return true 存在超限（并醒目打印），该候选应被舍弃；false 无超限
+ * @return true 存在超限（并pau_printf打印），该候选应被舍弃；false 无超限
  */
 static bool global_contactor_overload(ID_TYPE candidate_plug, ID_TYPE candidate_node)
 {
@@ -720,6 +741,17 @@ static bool global_contactor_overload(ID_TYPE candidate_plug, ID_TYPE candidate_
         ID_TYPE cand = (plugid == candidate_plug) ? candidate_node : ID_VAIN;
         accumulate_plug_loads(plugid, cand, loads, direct_loads);
     }
+    pau_printf("[PAU] !!!!!!!!!Global contactor loads: ");
+    for (ID_TYPE c = 1; c <= CONTACTOR_MAX; c++)
+    {
+        if (0 != loads[c])
+        {
+            char cid[16];
+            contactor_display_id(c, cid, sizeof(cid));
+            pau_printf("%s:%uA ", cid, (unsigned)loads[c]);
+        }
+    }
+    pau_printf("\r\n");
 
     /* 逐个接触器比较限流（多桩共享接触器的电流已跨桩叠加） */
     for (ID_TYPE c = 1; c <= CONTACTOR_MAX; c++)
@@ -979,153 +1011,46 @@ static ID_TYPE find_euelect_node_near(ID_TYPE plugid, ID_TYPE startid, size_t qu
 }
 static int find_euelect_node_away(ID_TYPE plugid, ID_TYPE startid, size_t quota)
 {
-    (void)quota;
+
     if (!ASSERT_PLUG_ID(plugid) || !ASSERT_NODE_ID_ENCIRCLE(startid))
     {
         return ID_VAIN;
     }
 
-    ID_TYPE max_index = ID_VAIN;
-    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
+    ID_TYPE optimal_index = ID_VAIN;
+    PAU_Vector *scorelist = pau_vector_create(NODE_MAX);
+    if (NULL == scorelist)
     {
-        //  检查是否为非ID_VAIN且当前是最大值（线环 + 半矩阵节点统一比较）
-        if (get_dist(nodeid) >= 0 && get_locked(nodeid) == plugid &&
-            (max_index == ID_VAIN || get_dist(nodeid) > get_dist(max_index)))
-        {
-            max_index = nodeid;
-        }
+        return ID_VAIN;
     }
-    if (max_index != ID_VAIN)
-    {
-        set_dist(max_index, -1);
-    }
-    return max_index; // 返回最大值的索引，如果没找到则返回-1
-}
 
-static bool reactive_tuning_encircle(ID_TYPE plugid)
-{
-    if (!ASSERT_PLUG_ID(plugid))
+    for (ID_TYPE nodeid = 1; nodeid <= (ID_TYPE)NODE_MAX; nodeid++)
     {
-        return false;
+        size_t score = makeScore(SENARIO_RELEASE, quota, plugid, 1, nodeid, 1);
+
+        pau_vector_set(scorelist, nodeid, score);
     }
-    // 1.先收集所有已占节点邻接到的其他充电桩plugid（线环 + 半矩阵统一处理）
-    PAU_Vector *plugs_shovedover = pau_vector_create(PAU_VECTOR_DEFAULT_CAPACITY);
-    PAU_Vector *nodes_shovedover = pau_vector_create(PAU_VECTOR_DEFAULT_CAPACITY);
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
+    // 找到得分最高的节点
+    int bestScore = -1;
+
+    for (ID_TYPE nodeid = 1; nodeid <= (ID_TYPE)NODE_MAX; nodeid++)
     {
-        ID_TYPE node_neighbors[MAX_NODE_NEIGHBORS] = {ID_VAIN};
-        get_neighbors(nodeid, node_neighbors);
-        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
+
+        int score = (int)pau_vector_at(scorelist, nodeid);
+        if (score > bestScore && score > WEIGHT_3)
         {
-            ID_TYPE neighborid = node_neighbors[i];
-            if (!ASSERT_NODE_ID(neighborid))
-            {
-                break;
-            }
-            struct Alloc_nodeObj *pneighbor = refer_Node_Extracted(neighborid);
-            if (ID_VAIN < pneighbor->plug_id && !pau_vector_contains(plugs_shovedover, pneighbor->plug_id))
-            {
-                if (pneighbor->plug_id == plugid)
-                {
-                    continue;
-                }
-                if (neighborid == get_plug_connectednode(pneighbor->plug_id))
-                {
-                    continue;
-                }
-                if (1 >= get_plug_chargingnodes_cnt(pneighbor->plug_id))
-                {
-                    continue;
-                }
-                pau_vector_append(nodes_shovedover, neighborid);
-                pau_vector_append(plugs_shovedover, pneighbor->plug_id);
-            }
+            bestScore = score;
+            optimal_index = nodeid;
         }
     }
 
-    ID_TYPE plugid_shovedover = ID_VAIN;
-    ID_TYPE nodeid_replacement = ID_VAIN;
-    // 2.遍历所有空闲节点,如果这个空闲点有邻接点在被收集到的充电桩充电
-    for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
+    pau_vector_destroy(scorelist);
+    if (optimal_index != ID_VAIN)
     {
-        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (ID_VAIN < pnode->plug_id) // NODE_OUTORDER和NODE_IDLEFREE状态都可以
-        {
-            continue;
-        }
-        ID_TYPE node_neighbors[MAX_NODE_NEIGHBORS] = {ID_VAIN};
-        get_neighbors(nodeid, node_neighbors);
-        for (int i = 0; i < MAX_NODE_NEIGHBORS; i++)
-        {
-            if (!ASSERT_NODE_ID(node_neighbors[i]))
-            {
-                break;
-            }
-            struct Alloc_nodeObj *pneighbor = refer_Node_Extracted(node_neighbors[i]);
-            if (ID_VAIN < pneighbor->plug_id && pau_vector_contains(plugs_shovedover, pneighbor->plug_id))
-            {
-                plugid_shovedover = pneighbor->plug_id;
-                nodeid_replacement = nodeid;
-                break;
-            }
-        }
-        if (plugid_shovedover != ID_VAIN && nodeid_replacement != ID_VAIN)
-        {
-            break;
-        }
+        set_dist(optimal_index, -1);
     }
-    // 3.在可抢占的nodeid_replacement集合中找到被占plugid是plugid_shovedover的节点
-    if (ID_VAIN == plugid_shovedover || ID_VAIN == nodeid_replacement)
-    {
-        pau_vector_destroy(plugs_shovedover);
-        pau_vector_destroy(nodes_shovedover);
-        return false;
-    }
-    bool stop = false;
-    PAU_VECTOR_FOREACH_BREAK(nodeid, nodes_shovedover, stop)
-    {
-        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-        if (pnode->plug_id == plugid_shovedover)
-        {
-            ID_TYPE recover_locked = get_locked(nodeid);
-            set_locked(plugid, nodeid);
-            set_locked(plugid_shovedover, nodeid_replacement);
-            ID_TYPE connectedNode_shovedover = refer_Plug_Extracted(plugid_shovedover)->connectedNode;
-            hops_refresh(connectedNode_shovedover, plugid_shovedover);
-            int hops = get_hops_occupied(connectedNode_shovedover, nodeid_replacement, plugid_shovedover);
-            set_locked(recover_locked, nodeid);
-            set_locked(0, nodeid_replacement);
 
-            if (0 >= hops)
-            {
-                pau_printf("[PAU] reactive_tuning_encircle: plugid %d replace node%d of plug%d with free node %d rehearsal failed!!!\r\n", plugid, nodeid, plugid_shovedover, nodeid_replacement);
-                continue;
-            }
-            push_NodetoPlug(nodeid_replacement, plugid_shovedover);
-            pull_NodefromPlug(nodeid, plugid_shovedover);
-            update_plug_shortage_power(plugid_shovedover);
-            refer_Plug_Extracted(plugid_shovedover)->refresh = true;
-            push_NodetoPlug(nodeid, plugid);
-            update_plug_shortage_power(plugid);
-            refer_Plug_Extracted(plugid)->refresh = true;
-            plugid_shovedover = ID_VAIN;
-            stop = true;
-            break;
-        }
-    }
-    pau_vector_destroy(plugs_shovedover);
-    pau_vector_destroy(nodes_shovedover);
-    return (ID_VAIN == plugid_shovedover);
-}
-bool occupiednodes_preempt(ID_TYPE plugid)
-{
-    if (!ASSERT_PLUG_ID(plugid))
-    {
-        return false;
-    }
-    // 统一图下，线环与半矩阵节点的抢占均由 reactive_tuning_encircle 处理
-    return reactive_tuning_encircle(plugid);
+    return optimal_index;
 }
 
 static bool node_common_operate(ID_TYPE plugid, bool opType)
@@ -1164,6 +1089,10 @@ static bool node_common_operate(ID_TYPE plugid, bool opType)
         }
         // 分配与释放统一先执行节点操作，再结算 quota，
         // 避免“quota 恰好扣到 0 时节点未被真正释放”的缺陷
+        if (quota - poptimal_node->power_available < 0 && NODE_OP_DISPENSE != opType)
+        {
+            break;
+        }
         func(optimal_node, plugid);
         pau_printf("%s nodeid:%d plugid:%d\r\n", __FUNCTION__, optimal_node, plugid);
         quota -= poptimal_node->power_available;
@@ -1264,7 +1193,7 @@ static bool idlenodes_semimatrix_donatio(ID_TYPE plugid)
         struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
         if (pnode->plug_id > ID_VAIN)
         {
-            size_t score = makeScore(SENARIO_MATRICE, 0, pnode->plug_id, 1, 1, 1);
+            size_t score = makeScore(SENARIO_MATRICE, 0, plugid, pnode->plug_id, 1, 1);
 
             if (score >= WEIGHT_3 && score > optimal_score)
             {
@@ -1430,45 +1359,6 @@ static ID_TYPE ring_node_at(ID_TYPE k)
     }
     return k;
 }
-
-static ID_TYPE ana_katabatic_flow(ID_TYPE plugid)
-{
-    if (!ASSERT_PLUG_ID(plugid))
-    {
-        return false;
-    }
-
-    for (int i = 0; i < NODES_MAX_ENCIRCLE / 2; i++)
-    {
-        struct Alloc_contactorObj *c = refer_Contactor_Extracted(CONTACTOR_MAX - i);
-        if (c->node1 == ID_VAIN)
-        {
-            continue;
-        }
-        if (plugid != refer_Node_Extracted(c->node1)->plug_id)
-        {
-            continue;
-        }
-        ID_TYPE nodeid_alpha = c->node2 / CONTACTOR_SPLICE_MULTIPLE;
-        if (ID_VAIN < nodeid_alpha && ID_VAIN == refer_Node_Extracted(nodeid_alpha)->plug_id)
-        {
-            if (!global_contactor_overload(plugid, nodeid_alpha))
-            {
-                return nodeid_alpha;
-            }
-        }
-        ID_TYPE nodeid_beta = c->node2 % CONTACTOR_SPLICE_MULTIPLE;
-        if (ID_VAIN < nodeid_beta && ID_VAIN == refer_Node_Extracted(nodeid_beta)->plug_id)
-        {
-            if (!global_contactor_overload(plugid, nodeid_beta))
-            {
-                return nodeid_beta;
-            }
-        }
-    }
-    return ID_VAIN;
-}
-
 /* 断开被占用的直连节点，让当前充电桩接管 */
 static void cutoff_root_node(struct Alloc_plugObj *pplug,
                              struct Alloc_nodeObj *pnode)
@@ -1534,55 +1424,6 @@ bool have_plug_occupied_matrixnode(ID_TYPE plugid)
     }
     return false;
 }
-// 释放矩阵中的节点
-static bool release_matrix_node(ID_TYPE plugid)
-{
-    if (!ASSERT_CONTACTOR_ID(plugid))
-    {
-        return false;
-    }
-    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
-    }
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        ID_TYPE contactorid = NODE_MAX - nodeid;
-        contactorid = CONTACTOR_MAX - contactorid;
-        struct Alloc_contactorObj *pcontactor = refer_Contactor_Extracted(contactorid);
-        if (nodeid > NODES_MAX_ENCIRCLE && !pcontactor->isClosed)
-        {
-            pull_NodefromPlug(nodeid, plugid);
-            update_plug_shortage_power(plugid);
-            return true;
-        }
-    }
-    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
-    {
-        if (nodeid > NODES_MAX_ENCIRCLE)
-        {
-            pull_NodefromPlug(nodeid, plugid);
-            update_plug_shortage_power(plugid);
-            return true;
-        }
-    }
-    return false;
-}
-/* 正常分配失败后的回退链：如果是SEMIMATRIX先尝试矩阵AVATAR，再尝试抢占已占节点 */
-static bool node_extra_operate(ID_TYPE plugid, bool opType)
-{
-    if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX && !opType)
-    {
-        return release_matrix_node(plugid);
-    }
-    // if (ASSERT_TOPOTYPE_WHEEL_PLUS_SEMIMATRIX && matrix_node_avatar(plugid))
-    // {
-    //     return true;
-    // }
-    return occupiednodes_preempt(plugid);
-}
-
 bool requestPower(ID_TYPE plugid, int requiredPower)
 {
     /* ── 验证 ── */
@@ -1617,10 +1458,7 @@ bool requestPower(ID_TYPE plugid, int requiredPower)
     for (int guard = 0; pplug->shortage > 0; guard++)
     {
         bool res = node_common_operate(plugid, NODE_OP_DISPENSE);
-        if (!res)
-        {
-            res = node_extra_operate(plugid, NODE_OP_DISPENSE);
-        }
+
         update_plug_shortage_power(plugid);
         if (guard > NODE_MAX)
         {
@@ -1642,6 +1480,7 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
         pplug->state = PLUG_IDLE;
         pplug->priority = PRIOR_VAIN;
         pplug->requiredPower = 0;
+        pplug->power_ceiling = 0;
         pplug->hysteresisCnt = 0;
         pplug->shortage = 0;
         PAU_Vector *allocatedNodes_copy = pau_vector_clone(pplug->allocatedNodes);
@@ -1675,11 +1514,6 @@ bool releasePower(ID_TYPE plugid, int requiredPower)
         // 按“距离直连节点最远优先”释放节点（线环 + 半矩阵统一比较），
         // 距离判据失效时才回退到矩阵节点专用释放逻辑
         res = node_common_operate(plugid, NODE_OP_RELEASE);
-        if (!res)
-        {
-            res = node_extra_operate(plugid, NODE_OP_RELEASE);
-        }
-
         if (!res)
         {
             return false;
@@ -1925,8 +1759,6 @@ FlowMap *flow_directioned(ID_TYPE plugid, FlowMap *pobject)
         }
     }
 
-
-
     /* 按 hops 从小到大排序 */
     sort_flowmap_by_hops(pobject, index);
 
@@ -1986,4 +1818,18 @@ bool set_node_availability(ID_TYPE node_id)
         res = false;
     }
     return res;
+}
+
+void cleanup_plug_data(ID_TYPE plugid)
+{
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    pplug->state = PLUG_IDLE;
+    pplug->priority = PRIOR_VAIN;
+    pplug->requiredPower = 0;
+    pplug->power_ceiling = 0;
+    pplug->hysteresisCnt = DELAYMENT_POSTCHARGING;
+    pplug->shortage = 0;
+    pplug->refresh = false;
+    pplug->sequent = false;
+    pau_vector_clear(pplug->allocatedNodes);
 }

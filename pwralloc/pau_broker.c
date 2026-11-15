@@ -3,10 +3,12 @@
  Copyright(c) Infy Power 2026-2026
   @file    pau_broker.c
   @author  YBA40320
-  @version V1.0
+  @version V2.0
   @date    2026-04-27
   @brief   数据结构在内存中的代理,实现对节点,充电桩,接触器等数据的访问和修改
-  @history 2026-04-27 YBA40320 创建;2026-05-15 YBA40320 从模拟机移植到A2605线环1500kW工程
+  @history 2026-04-27 YBA40320 创建;
+           2026-05-15 YBA40320 从模拟机移植到A2605线环1500kW工程;
+           2026-09-20 YBA40320 兼容双线环双矩阵拓扑;
   @details
 
  ************************************************************************************************************************************************************************/
@@ -84,14 +86,6 @@ CONTACTOR_TYPE contactor_type(ID_TYPE contactorid)
     return (refer_Contactor_Extracted(contactorid)->node2 <= CONTACTOR_SPLICE_MULTIPLE)
                ? CONTACTOR_MATRIX
                : CONTACTOR_MATRIX_RING;
-}
-size_t node_current_amps(ID_TYPE nodeid)
-{
-    if (!ASSERT_NODE_ID(nodeid) || 0 == UNITPWR_MAX)
-    {
-        return 0;
-    }
-    return refer_Node_Extracted(nodeid)->power_available * NODE_AMPS_PER_MODULE / UNITPWR_MAX;
 }
 
 ID_TYPE get_plug_twin_node(ID_TYPE plugid)
@@ -217,6 +211,7 @@ static void Alloc_PlugsArray_Init(void *const ptr, size_t n)
             p->obj_array[i].connectedNode = calc_plug_connectednode(i, NODE_MAX, n);
         }
         p->obj_array[i].requiredPower = 0;
+        p->obj_array[i].power_ceiling = 0;
         p->obj_array[i].hysteresisCnt = 0;
         p->obj_array[i].refresh = false;
         p->obj_array[i].sequent = false;
@@ -413,9 +408,6 @@ bool database_building(TOPOTYPE topology, size_t nodes_num, size_t plugs_num)
         }                                                                                    \
     } while (0);
 
-    // 数组初始化阶段尚未设置 TOPOLOGY_TYPE，用该全局暂存当前拓扑供各 Init 函数判断
-    TOPOLOGY_TYPE = topology;
-
     size_t Nodes_varonstack = nodes_num;
     size_t Plugs_varonstack = plugs_num;
     size_t Contactors_varonstack = 2 * nodes_num;
@@ -488,6 +480,22 @@ size_t get_plug_requiredPower(ID_TYPE plugid)
         return 0;
     }
     return refer_Plug_Extracted(plugid)->requiredPower;
+}
+size_t get_plug_ceilingPower(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return 0;
+    }
+    return refer_Plug_Extracted(plugid)->power_ceiling;
+}
+void set_plug_ceilingPower(ID_TYPE plugid, size_t power)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return;
+    }
+    refer_Plug_Extracted(plugid)->power_ceiling = power;
 }
 
 int get_node_available_power(ID_TYPE nodeid)
@@ -608,7 +616,12 @@ int get_plug_shortage(ID_TYPE plugid)
     {
         return NODE_MAX;
     }
+#if defined(STM32F407xx)
+    int get_plug_liveShortage(ID_TYPE plugid);
+    return get_plug_liveShortage(plugid);
+#else
     return refer_Plug_Extracted(plugid)->shortage;
+#endif
 }
 size_t *get_plug_hysteresisCnt(ID_TYPE plugid)
 {
@@ -637,6 +650,27 @@ int get_plug_charging_power(ID_TYPE plugid)
         power_total += pnode->power_available;
     }
     return power_total;
+}
+
+bool underperformer_fallshort(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return false;
+    }
+    int power_real = get_plug_charging_power(plugid);
+    int power_ideal = get_plug_requiredPower(plugid);
+    int quota = power_ideal - power_real;
+    quota = quota > SIZING_TOLERANCE ? quota : 0;
+    if (quota <= 0)
+    {
+        return false;
+    }
+    quota = quota / UNITPWR_MAX + (int)(quota % UNITPWR_MAX != 0);
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    pau_printf("plug %d shortage % augment: +%d requiredpwr %d chargingmodules %d\r\n", plugid, pplug->shortage, quota, power_ideal, power_real);
+    pplug->shortage += quota;
+    return true;
 }
 void update_plug_shortage_power(ID_TYPE plugid)
 {
@@ -734,6 +768,9 @@ size_t get_system_charging_modules_cnt(ID_TYPE exclude_plugid)
     return ret;
 }
 
+
+
+#if !defined(__IAR_SYSTEMS_ICC__)
 int requestpwr_limited_matching(ID_TYPE plugid, int required_power)
 {
     if (!ASSERT_PLUG_ID(plugid))
@@ -758,3 +795,4 @@ int requestpwr_limited_matching(ID_TYPE plugid, int required_power)
     }
     return matched_requestpwr;
 }
+#endif

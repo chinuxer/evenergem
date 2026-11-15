@@ -206,10 +206,11 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
         int shortage = 0;
         shortage = get_plug_shortage(neighbor_plugid);
         shortage = shortage < 0 ? 0 : shortage;
+        shortage /= UNITPWR_MAX;
         shortage = shortage >= WEIGHT_HIERARCHY ? WEIGHT_HIERARCHY - 1 : shortage;
         score += WEIGHT_4 * (shortage % WEIGHT_HIERARCHY);
         score += WEIGHT_5 * (PRIOR_ADHOC < get_plug_priority(neighbor_plugid) && 0 < shortage ? 1 : 0);
-        score = (plugid == neighbor_plugid) ? 0 : score; // 如果邻居节点所属充电桩与当前充电桩相同,则得分为0,不进行继承
+        score = (plugid == neighbor_plugid || 0 == shortage) ? 0 : score; // 如果邻居节点所属充电桩与当前充电桩相同或没有功率缺额,则得分为0,不进行继承
 
         return score;
     }
@@ -312,12 +313,42 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
     }
     case SENARIO_MATRICE:
     {
-        score = WEIGHT_1 * (get_plug_chargingnodes_cnt(plugid));
-        score += WEIGHT_3 * (get_plug_shortage(plugid));
+        score = WEIGHT_1 * (get_plug_chargingnodes_cnt(neighbor_plugid));
+        int shortage = 0;
+        shortage = get_plug_shortage(neighbor_plugid);
+        shortage = shortage < 0 ? 0 : shortage;
+        shortage /= UNITPWR_MAX;
+        shortage = shortage >= WEIGHT_HIERARCHY ? WEIGHT_HIERARCHY - 1 : shortage;
+        score += WEIGHT_3 * (shortage % WEIGHT_HIERARCHY);
         if (score >= WEIGHT_3)
         {
-            score += WEIGHT_5 * (PRIOR_ADHOC < get_plug_priority(plugid) ? 1 : 0);
+            score += WEIGHT_5 * (PRIOR_ADHOC < get_plug_priority(neighbor_plugid) ? 1 : 0);
         }
+        score = (plugid == neighbor_plugid || 0 == shortage) ? 0 : score; // 如果邻居节点所属充电桩与当前充电桩相同或没有功率缺额,则得分为0,不进行继承
+        return score;
+    }
+    case SENARIO_RELEASE:
+    {
+        // 占据节点中最远的，并且节点容量弄覆盖减少量的
+        int hops = -1;
+        if (get_locked(nodeid) != plugid)
+        {
+            return 0;
+        }
+        int module_adaptive = get_node_available_power(nodeid);
+        if (module_adaptive > quota)
+        {
+            return 0;
+        }
+        hops = get_dist(nodeid);
+        if (hops < 0)
+        {
+            return 0;
+        }
+        score = WEIGHT_3 * hops;
+        module_adaptive /= 100;
+        module_adaptive = module_adaptive >= (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1) ? (WEIGHT_HIERARCHY * WEIGHT_HIERARCHY - 1) : module_adaptive;
+        score += WEIGHT_1 * module_adaptive;
         return score;
     }
     default:
@@ -328,15 +359,20 @@ size_t makeScore(enum Senario senario, int quota, ID_TYPE plugid, ID_TYPE neighb
 static bool isHysteresis_Active(float pwr, ID_TYPE plugid, uint32_t *timer)
 {
 #define HYSTERESIS_IMMEDIATE_DEC (5.0f * 1000.0f)
-#define HYSTERESIS_IMMEDIATE_AUG (3.0f * 1000.0f)
-#define HYSTERESIS_CONSIDERED_DEC (2.0f * 1000.0f)
 #define MAXIM_SUPPLY_OF_NODE (UNITPWR_MAX * 100.0f)
-#define HYSTERESIS_THRESHOLD (4u * 30u)
-#define MAX(a, b) (((a) > (b)) ? (a) : (b))
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define HYSTERESIS_THRESHOLD (6u * 30u)
+    if (*timer >= DELAYMENT_POSTCHARGING && *timer <= DELAYMENT_POSTCHARGING + DELAYMENT_POSTCHARGING_HYSTERESIS)
+    {
+        *timer += 1;
+        return false;
+    }
+    if (*timer > DELAYMENT_POSTCHARGING + DELAYMENT_POSTCHARGING_HYSTERESIS)
+    {
+        *timer = 0;
+    }
     int charging_pwr = get_plug_charging_power(plugid);
-    int required_pwr = get_plug_requiredPower(plugid);
-    if (pwr < 1.0f * (MIN(charging_pwr, required_pwr) * 100.0f - MAXIM_SUPPLY_OF_NODE - HYSTERESIS_IMMEDIATE_DEC))
+    /* 立即释放：需求低于“已分配 - 1个模块 - 5kW - 5kW” */
+    if (pwr < 1.0f * (charging_pwr) * 100.0f - MAXIM_SUPPLY_OF_NODE - PAU_MERGE_BUFFER - HYSTERESIS_IMMEDIATE_DEC)
     {
         if (1 >= get_plug_allocated_cnt(plugid))
         {
@@ -345,12 +381,8 @@ static bool isHysteresis_Active(float pwr, ID_TYPE plugid, uint32_t *timer)
         pau_printf(" pwr %f is less than %fw\r\n", (double)pwr, (double)charging_pwr * 100.0f);
         return true;
     }
-    if (pwr > 1.0f * (MAX(charging_pwr, required_pwr) * 100.0f + HYSTERESIS_IMMEDIATE_AUG))
-    {
-        pau_printf(" pwr %f is greater than %fw\r\n", (double)pwr, (double)charging_pwr * 100.0f);
-        return true;
-    }
-    if (pwr < 1.0f * (MIN(charging_pwr, required_pwr) * 100.0f - MAXIM_SUPPLY_OF_NODE - HYSTERESIS_CONSIDERED_DEC))
+    /* 定时释放：需求低于“已分配 - 1个模块 - 5kW”，持续 120 计数后释放 */
+    if (pwr < 1.0f * (charging_pwr) * 100.0f - MAXIM_SUPPLY_OF_NODE - PAU_MERGE_BUFFER)
     {
         pau_printf("*");
         *timer = (*timer > HYSTERESIS_THRESHOLD) ? 0 : *timer + 1;
@@ -420,28 +452,75 @@ static float stable_Required_Current(float current, ID_TYPE plug_id)
     pdata->sample_current_pool[pdata->index++ % DEMAND_CURRENT_SAMPLENUM] = current;
     return (var_stablish_threshold == pdata->counter ? last_interpolated : 0.0f);
 }
-void available_power_update(void)
+
+void available_power_update(ID_TYPE exclude_plug)
 {
     pau_printf("[PAU] available_power_update:");
     for (ID_TYPE nodeid = 1; nodeid <= NODE_MAX; nodeid++)
     {
         float favailablepwr = GET_PCU_RAWDATA(nodeid, ENUM_PCUDATA_OF_NODE_AVAILABLEPWR, float);
         refer_Node_Extracted(nodeid)->power_available = (int)(favailablepwr * 10);
+        if (refer_Node_Extracted(nodeid)->plug_id != exclude_plug)
+        {
+            continue;
+        }
+        NodeModuleStatus nodestatus_pcu = (NodeModuleStatus)(GET_PCU_RAWDATA(nodeid, ENUM_PCUDATA_OF_NODE_STATUS, uint32));
+        NodeState nodestatus_pau = get_node_state(nodeid);
+        if (nodestatus_pcu == ENUM_NODE_FAULT && nodestatus_pau == NODE_IDLEFREE)
+        {
+            refer_Node_Extracted(nodeid)->power_available = 0;
+            refer_Node_Extracted(nodeid)->state = NODE_DISABLED;
+        }
+        if (nodestatus_pcu == ENUM_NODE_IDLE && nodestatus_pau == NODE_DISABLED)
+        {
+            refer_Node_Extracted(nodeid)->state = NODE_IDLEFREE;
+        }
         pau_printf("%d:%d,", nodeid, refer_Node_Extracted(nodeid)->power_available);
     }
     pau_printf("\r\n");
 }
-bool get_plug_surging_flag(ID_TYPE plugid)
+/* B型节点诊断：动作执行前打印本桩所有已分配节点的状态与可用功率，
+   便于区分“已分配但未计入功率”的 B 节点（NODE_OUTORDER/DISABLED/0功率） */
+static void dump_plug_nodes(ID_TYPE plugid)
 {
-    static int cnt[MAXNODES_MEM_LMT + 1] = {0};
-    cnt[plugid]++;
+    struct Alloc_plugObj *pplug = refer_Plug_Extracted(plugid);
+    if (NULL == pplug)
+    {
+        return;
+    }
+    pau_printf("[PAU] plug%d alloc: counted=%d req=%d cnt=%d\r\n",
+               plugid,
+               get_plug_charging_power(plugid),
+               (int)get_plug_requiredPower(plugid),
+               (int)get_plug_allocated_cnt(plugid));
+    PAU_VECTOR_FOREACH(nodeid, pplug->allocatedNodes)
+    {
+        struct Alloc_nodeObj *pnode = refer_Node_Extracted(nodeid);
+        if (NULL != pnode)
+        {
+            pau_printf("[PAU]   node%d role=%s state=%d pwr=%d\r\n",
+                       nodeid,
+                       (nodeid > NODES_MAX_ENCIRCLE) ? "B" : "A",
+                       (int)pnode->state,
+                       pnode->power_available);
+        }
+    }
+}
+
+bool get_plug_surging_flag(ID_TYPE plugid, float limitcurr)
+{
+    static float last_merge_try_current[MAXNODES_MEM_LMT + 1] = {0.0f};
     float fcurrent = GET_PCU_RAWDATA(plugid, ENUM_PCUDATA_OF_PLUG_DEMAND_CURRENT, float);
     float fvoltage = GET_PCU_RAWDATA(plugid, ENUM_PCUDATA_OF_PLUG_VOLTAGE, float);
-    float fcomared_current = get_plug_requiredPower(plugid) * 100.0f / fvoltage;
-    if (fabsf(fcomared_current - fcurrent) < 1.0f)
+    if (fvoltage <= 0.0f)
     {
-        if (0 == cnt[plugid] % 60) // ~1 min
-            pau_printf("[PAU] var_upd p%d idle delta=%.1fA\r\n", plugid, (double)(fcomared_current - fcurrent));
+        return false;
+    }
+    float fcomared_current = get_plug_requiredPower(plugid) * 100.0f / fvoltage;
+    /* 需求未变化且上次请求已无欠额时才跳过；存在欠额则继续判断并机 */
+    if (fabsf(fcomared_current - fcurrent) < 1.0f &&
+        get_plug_requiredPower(plugid) <= (size_t)get_plug_charging_power(plugid))
+    {
         return false;
     }
     fcurrent = stable_Required_Current(fcurrent, plugid);
@@ -449,33 +528,121 @@ bool get_plug_surging_flag(ID_TYPE plugid)
     {
         return false;
     }
+    fcurrent = (fcurrent > limitcurr ? limitcurr : fcurrent);
     size_t *addr_cnt = get_plug_hysteresisCnt(plugid);
     float pwr = fvoltage * fcurrent;
-    if (isHysteresis_Active(pwr, plugid, addr_cnt))
+
+    bool releasePower(ID_TYPE, int);
+    bool requestPower(ID_TYPE, int);
+
+    int pwr_int = (int)(pwr / 100.0f);
+    int old_pwr = get_plug_charging_power(plugid);
+    int alloc_cnt = get_plug_allocated_cnt(plugid);
+    size_t ceiling = get_plug_ceilingPower(plugid);
+
+    /* 提前并机目标：需求 + 5kW，且不超过 BCP 最大功率 */
+    int target = pwr_int + PAU_MERGE_BUFFER_01KW;
+    if (ceiling > 0 && (size_t)target > ceiling)
     {
-        int pwr_int = (int)(pwr / 100.0f);
-        int old_pwr = get_plug_charging_power(plugid);
-        int alloc_cnt = get_plug_allocated_cnt(plugid);
-        pau_printf("[PAU] var_upd p%d ACT pwr=%.0fkW V=%.0fV I=%.0fA old=%dkW nodes=%d tick=%d\r\n",
-                   plugid, (double)pwr / 1000.0, (double)fvoltage, (double)fcurrent,
-                   old_pwr / 10, alloc_cnt, (int)*addr_cnt);
-        bool releasePower(ID_TYPE, int);
-        bool requestPower(ID_TYPE, int);
-        available_power_update();
-        if (pwr_int < old_pwr && 1 >= alloc_cnt)
+        target = (int)ceiling;
+    }
+
+    /* 同一需求值只尝试一次并机；无可并节点时由 500 tick 兜底路径重试 */
+    bool demand_moved = (fabsf(fcurrent - last_merge_try_current[plugid]) >= 1.0f);
+    /* BCP上限例外：已分配功率已进入BCP上限的5kW缓冲范围时不再并机；
+       车不可能超过BCP最大功率，而节点粒度是整模块，继续并只会多并一个模块 */
+    bool bcp_covered = (ceiling > 0) &&
+                       ((size_t)(old_pwr + PAU_MERGE_BUFFER_01KW) >= ceiling);
+    bool need_merge = (target > old_pwr) && demand_moved && !bcp_covered;
+    bool need_release = isHysteresis_Active(pwr, plugid, addr_cnt);
+
+    if (need_merge || need_release)
+    {
+        available_power_update(ID_VAIN);
+        old_pwr = get_plug_charging_power(plugid);
+        alloc_cnt = get_plug_allocated_cnt(plugid);
+        dump_plug_nodes(plugid);
+
+        if (need_merge && target > old_pwr)
         {
-            pau_printf("[PAU] var_upd p%d KEEP only 1 node remain\r\n", plugid);
-            return false;
+            last_merge_try_current[plugid] = fcurrent;
+            pau_printf("[PAU] var_upd p%d MERGE pwr=%.0fkW target=%dkW old=%dkW nodes=%d ceiling=%dkW\r\n",
+                       plugid, (double)pwr / 1000.0, target / 10, old_pwr / 10,
+                       alloc_cnt, (int)(ceiling / 10));
+            (void)requestPower(plugid, target);
+            return true;
         }
-        bool is_rel = (pwr_int < old_pwr);
-        pau_printf("[PAU] var_upd p%d EXEC %s target=%dkW alloc=%d\r\n",
-                   plugid, is_rel ? "release" : "request", (double)pwr / 1000.0, alloc_cnt);
-        (void)(is_rel ? releasePower(plugid, pwr_int) : requestPower(plugid, pwr_int));
-        return true;
+
+        if (need_release)
+        {
+            pau_printf("[PAU] var_upd p%d ACT pwr=%.0fkW V=%.0fV I=%.0fA old=%dkW nodes=%d tick=%d\r\n",
+                       plugid, (double)pwr / 1000.0, (double)fvoltage, (double)fcurrent,
+                       old_pwr / 10, alloc_cnt, (int)*addr_cnt);
+            if (pwr_int < old_pwr && 1 >= alloc_cnt)
+            {
+                pau_printf("[PAU] var_upd p%d KEEP only 1 node remain\r\n", plugid);
+                return false;
+            }
+            pau_printf("[PAU] var_upd p%d EXEC release target=%.0fkW alloc=%d\r\n",
+                       plugid, (double)pwr / 1000.0, alloc_cnt);
+            (void)releasePower(plugid, pwr_int);
+            return true;
+        }
     }
-    else
+    return false;
+}
+
+/* 实时目标功率：min(实时需求 + 5kW, BCP上限)，0 表示无有效需求 */
+int get_plug_liveTargetPower(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
     {
-        return false;
+        return 0;
     }
+    float current = GET_PCU_RAWDATA(plugid, ENUM_PCUDATA_OF_PLUG_DEMAND_CURRENT, float);
+    float voltage = GET_PCU_RAWDATA(plugid, ENUM_PCUDATA_OF_PLUG_VOLTAGE, float);
+    if (voltage <= 0.0f || current <= 0.0f)
+    {
+        return 0;
+    }
+    int demand = (int)(current * voltage / 100.0f);
+    int target = demand + PAU_MERGE_BUFFER_01KW;
+    size_t ceiling = get_plug_ceilingPower(plugid);
+    if (ceiling > 0 && (size_t)target > ceiling)
+    {
+        target = (int)ceiling;
+    }
+    return target;
+}
+
+/* 实时欠额：目标功率 - 已分配实时可用功率；已覆盖BCP上限或需求为0时返回0 */
+int get_plug_liveShortage(ID_TYPE plugid)
+{
+    if (!ASSERT_PLUG_ID(plugid))
+    {
+        return 0;
+    }
+    int target = get_plug_liveTargetPower(plugid);
+    if (target <= 0)
+    {
+        return 0;
+    }
+    int charged = get_plug_charging_power(plugid);
+    size_t ceiling = get_plug_ceilingPower(plugid);
+    if (ceiling > 0 && (size_t)(charged + PAU_MERGE_BUFFER_01KW) >= ceiling)
+    {
+        return 0;
+    }
+    return target - charged;
+}
+
+size_t get_node_available_current(ID_TYPE nodeid)
+{
+    if (!ASSERT_NODE_ID(nodeid))
+    {
+        return 0;
+    }
+    float amps = GET_PCU_RAWDATA(nodeid, ENUM_PCUDATA_OF_NODE_AVAILABLECURRENT, float);
+    return (size_t)(amps * 1.0f);
 }
 #endif
